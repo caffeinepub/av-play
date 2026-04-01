@@ -1,6 +1,5 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "@tanstack/react-router";
 import { Home, LogOut, Settings, User, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -12,13 +11,15 @@ import { ColorCard } from "../components/ColorCard";
 import { CountdownRing } from "../components/CountdownRing";
 import { LiveTicker } from "../components/LiveTicker";
 import { ProfileSheet } from "../components/ProfileSheet";
-import { RoundHistory } from "../components/RoundHistory";
+import { type HistoryEntry, RoundHistory } from "../components/RoundHistory";
 import { WalletPanel } from "../components/WalletPanel";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useGameState, useUserProfile } from "../hooks/useQueries";
 import {
   getPhaseFromTimeRemaining,
+  getResultForRound,
+  getRoundNumber,
   getUnifiedTimeRemaining,
 } from "../utils/gameUtils";
 import { playLoseSound, playWinChime } from "../utils/sound";
@@ -34,9 +35,10 @@ export function TradingPage() {
   );
   const [profileOpen, setProfileOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-  const prevRoundIdRef = useRef<bigint | null>(null);
+  const [roundHistory, setRoundHistory] = useState<HistoryEntry[]>([]);
+  const prevRoundIdRef = useRef<number | null>(null);
 
-  // Re-register access control after actor is ready (belt-and-suspenders)
+  // Re-register access control after actor is ready
   useEffect(() => {
     if (!actor) return;
     actor
@@ -46,10 +48,33 @@ export function TradingPage() {
       .catch(() => {});
   }, [actor]);
 
-  // Wall-clock based countdown - all users see the same timer
+  // Wall-clock based countdown + round-change detection in one interval
   useEffect(() => {
     const interval = setInterval(() => {
       setTimeRemaining(getUnifiedTimeRemaining());
+
+      const currentRound = getRoundNumber();
+      if (
+        prevRoundIdRef.current !== null &&
+        prevRoundIdRef.current !== currentRound
+      ) {
+        const prevRound = prevRoundIdRef.current;
+        const result = getResultForRound(prevRound);
+        setRoundHistory((prev) => {
+          if (prev.find((e) => e.roundId === prevRound)) return prev;
+          return [
+            {
+              roundId: prevRound,
+              color: result.color,
+              size: result.size,
+              timestamp: Date.now(),
+            },
+            ...prev,
+          ].slice(0, 30);
+        });
+        setSelectedColor(null);
+      }
+      prevRoundIdRef.current = currentRound;
     }, 200);
     return () => clearInterval(interval);
   }, []);
@@ -57,18 +82,20 @@ export function TradingPage() {
   const gs = gameState.data;
   const profile = userProfile.data ?? null;
 
-  // Derive phase from timer, not from backend
   const phase = getPhaseFromTimeRemaining(timeRemaining);
 
   const multipliers = gs?.multipliers ?? { red: 2, green: 2, violet: 4.5 };
-  const roundHistory = gs?.roundHistory ?? [];
-  const currentRoundId = gs?.currentRoundId ?? 0n;
+  const backendRoundHistory = gs?.roundHistory ?? [];
+  const currentRoundId = getRoundNumber();
+  const currentResult = getResultForRound(currentRoundId);
 
+  // Win/loss toast based on backend data
+  const prevBigintRef = useRef<bigint | null>(null);
   useEffect(() => {
     if (!gs || !profile) return;
     const { currentRoundId: rid, roundHistory: rh } = gs;
-    if (prevRoundIdRef.current !== null && prevRoundIdRef.current !== rid) {
-      const prevRound = rh.find((r) => r.roundId === prevRoundIdRef.current);
+    if (prevBigintRef.current !== null && prevBigintRef.current !== rid) {
+      const prevRound = rh.find((r) => r.roundId === prevBigintRef.current);
       if (prevRound?.result) {
         const userBet = prevRound.bets.find(
           (b) => b[0].toString() === identity?.getPrincipal().toString(),
@@ -87,15 +114,14 @@ export function TradingPage() {
           }
         }
       }
-      setSelectedColor(null);
     }
-    prevRoundIdRef.current = rid;
+    prevBigintRef.current = rid;
   }, [gs, profile, identity]);
 
   const alreadyBet =
     profile?.betHistory?.some(() => {
-      const currentRound = roundHistory.find(
-        (r) => r.roundId === currentRoundId,
+      const currentRound = backendRoundHistory.find(
+        (r) => r.roundId === gs?.currentRoundId,
       );
       if (!currentRound) return false;
       return currentRound.bets.some(
@@ -103,21 +129,25 @@ export function TradingPage() {
       );
     }) ?? false;
 
-  const currentRound = roundHistory.find((r) => r.roundId === currentRoundId);
+  const currentRound = backendRoundHistory.find(
+    (r) => r.roundId === gs?.currentRoundId,
+  );
   const roundBets = {
     red: currentRound?.totalRedBets ?? 0n,
     green: currentRound?.totalGreenBets ?? 0n,
     violet: currentRound?.totalVioletBets ?? 0n,
   };
 
-  // Show result during reveal phase
-  const revealResult =
-    phase === "reveal"
-      ? roundHistory.find((r) => r.roundId === currentRoundId)?.result
-      : undefined;
-
   const principal = identity?.getPrincipal().toString() ?? "";
   const shortPrincipal = principal ? `${principal.slice(0, 8)}...` : "Guest";
+
+  const colorHex = (c: "red" | "green" | "violet") =>
+    c === "red" ? "#FF4A4A" : c === "green" ? "#33F5A4" : "#B455FF";
+  const colorEmoji = (c: "red" | "green" | "violet") =>
+    c === "red" ? "🔴" : c === "green" ? "🟢" : "🟣";
+  const sizeColor = (s: "BIG" | "SMALL") =>
+    s === "BIG" ? "#4AA8FF" : "#FF8C42";
+  const sizeEmoji = (s: "BIG" | "SMALL") => (s === "BIG" ? "⬆️" : "⬇️");
 
   return (
     <div className="min-h-screen flex flex-col pb-24">
@@ -180,138 +210,140 @@ export function TradingPage() {
       </header>
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-4 space-y-4">
-        {gameState.isLoading ? (
-          <div className="space-y-4" data-ocid="trading.loading_state">
-            <Skeleton className="h-64 w-full rounded-xl bg-muted/30" />
-            <Skeleton className="h-32 w-full rounded-xl bg-muted/30" />
-          </div>
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key="trading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-4"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="card-surface rounded-xl p-4 flex flex-col items-center gap-3">
-                  <div className="flex items-center justify-between w-full">
-                    <div>
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider">
-                        Round
-                      </div>
-                      <div className="text-lg font-black text-foreground">
-                        #{Number(currentRoundId)}
-                      </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="trading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="card-surface rounded-xl p-4 flex flex-col items-center gap-3">
+                <div className="flex items-center justify-between w-full">
+                  <div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                      Round
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider">
-                        Phase
-                      </div>
-                      <div
-                        className={`text-sm font-bold capitalize ${
-                          phase === "betting"
-                            ? timeRemaining > 10
-                              ? "text-neon-green"
-                              : "text-yellow-400"
-                            : phase === "reveal"
-                              ? "text-neon-violet"
-                              : "text-neon-blue"
-                        }`}
-                      >
-                        {timeRemaining > 10
-                          ? "Betting Open"
-                          : phase === "reveal"
-                            ? "Result"
-                            : "Closed"}
-                      </div>
+                    <div className="text-lg font-black text-foreground">
+                      #{currentRoundId}
                     </div>
                   </div>
-
-                  <CountdownRing timeRemaining={timeRemaining} phase={phase} />
-
-                  {phase === "reveal" && revealResult && (
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="animate-reveal-glow text-center"
+                  <div className="text-right">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                      Phase
+                    </div>
+                    <div
+                      className={`text-sm font-bold capitalize ${
+                        phase === "betting"
+                          ? timeRemaining > 10
+                            ? "text-neon-green"
+                            : "text-yellow-400"
+                          : phase === "reveal"
+                            ? "text-neon-violet"
+                            : "text-neon-blue"
+                      }`}
                     >
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                      {timeRemaining > 10
+                        ? "Betting Open"
+                        : phase === "reveal"
+                          ? "Result"
+                          : "Closed"}
+                    </div>
+                  </div>
+                </div>
+
+                <CountdownRing timeRemaining={timeRemaining} phase={phase} />
+
+                <AnimatePresence>
+                  {phase === "reveal" && (
+                    <motion.div
+                      key="result-reveal"
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.7, opacity: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 20,
+                      }}
+                      className="text-center w-full"
+                    >
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
                         Result
                       </div>
                       <div
-                        className="text-2xl font-black uppercase"
+                        className="text-3xl font-black uppercase mb-2"
                         style={{
-                          color:
-                            revealResult === "red"
-                              ? "#FF4A4A"
-                              : revealResult === "green"
-                                ? "#33F5A4"
-                                : "#B455FF",
-                          textShadow: `0 0 20px ${
-                            revealResult === "red"
-                              ? "#FF4A4A"
-                              : revealResult === "green"
-                                ? "#33F5A4"
-                                : "#B455FF"
-                          }99`,
+                          color: colorHex(currentResult.color),
+                          textShadow: `0 0 24px ${colorHex(currentResult.color)}99, 0 0 48px ${colorHex(currentResult.color)}44`,
                         }}
                       >
-                        {revealResult} wins!
+                        {colorEmoji(currentResult.color)} {currentResult.color}{" "}
+                        wins!
+                      </div>
+                      <div className="flex justify-center">
+                        <span
+                          className="px-4 py-1.5 rounded-full text-sm font-bold"
+                          style={{
+                            background: `${sizeColor(currentResult.size)}22`,
+                            color: sizeColor(currentResult.size),
+                            border: `1.5px solid ${sizeColor(currentResult.size)}77`,
+                            boxShadow: `0 0 12px ${sizeColor(currentResult.size)}44`,
+                          }}
+                        >
+                          {sizeEmoji(currentResult.size)} {currentResult.size}
+                        </span>
                       </div>
                     </motion.div>
                   )}
-                </div>
-
-                <WalletPanel profile={profile} />
+                </AnimatePresence>
               </div>
 
-              <div
-                className="grid grid-cols-3 gap-3"
-                data-ocid="trade.colors.section"
-              >
-                {(["red", "green", "violet"] as const).map((color) => (
-                  <ColorCard
-                    key={color}
-                    color={color}
-                    multiplier={multipliers[color]}
-                    totalBets={roundBets[color]}
-                    isSelected={selectedColor === color}
-                    isWinner={revealResult === color}
-                    isReveal={phase === "reveal"}
-                    disabled={
-                      phase !== "betting" || alreadyBet || timeRemaining <= 10
-                    }
-                    onClick={() =>
-                      phase === "betting" &&
-                      !alreadyBet &&
-                      timeRemaining > 10 &&
-                      setSelectedColor(color)
-                    }
-                  />
-                ))}
-              </div>
+              <WalletPanel profile={profile} />
+            </div>
 
-              <BetPanel
-                phase={phase}
-                selectedColor={selectedColor}
-                userCoins={profile?.coins ?? 0n}
-                alreadyBet={alreadyBet}
-                timeRemaining={timeRemaining}
-              />
+            <div
+              className="grid grid-cols-3 gap-3"
+              data-ocid="trade.colors.section"
+            >
+              {(["red", "green", "violet"] as const).map((color) => (
+                <ColorCard
+                  key={color}
+                  color={color}
+                  multiplier={multipliers[color]}
+                  totalBets={roundBets[color]}
+                  isSelected={selectedColor === color}
+                  isWinner={phase === "reveal" && currentResult.color === color}
+                  isReveal={phase === "reveal"}
+                  disabled={
+                    phase !== "betting" || alreadyBet || timeRemaining <= 10
+                  }
+                  onClick={() =>
+                    phase === "betting" &&
+                    !alreadyBet &&
+                    timeRemaining > 10 &&
+                    setSelectedColor(color)
+                  }
+                />
+              ))}
+            </div>
 
-              <RoundHistory rounds={roundHistory} />
-            </motion.div>
-          </AnimatePresence>
-        )}
+            <BetPanel
+              phase={phase}
+              selectedColor={selectedColor}
+              userCoins={profile?.coins ?? 0n}
+              alreadyBet={alreadyBet}
+              timeRemaining={timeRemaining}
+            />
+
+            <RoundHistory history={roundHistory} />
+          </motion.div>
+        </AnimatePresence>
       </main>
 
-      {/* Live ticker + Bottom Nav stacked at bottom */}
       <div className="fixed bottom-0 left-0 right-0 z-50">
-        {/* Live activity ticker */}
         <LiveTicker />
 
-        {/* Bottom Navigation Bar */}
         <nav
           className="flex items-center"
           style={{
@@ -321,7 +353,6 @@ export function TradingPage() {
             height: "64px",
           }}
         >
-          {/* Activity button - left */}
           <div className="flex-1 flex justify-start pl-6">
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -364,7 +395,6 @@ export function TradingPage() {
             </motion.button>
           </div>
 
-          {/* Home button - center */}
           <Link to="/">
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -388,7 +418,6 @@ export function TradingPage() {
             </motion.button>
           </Link>
 
-          {/* Profile button - right */}
           <div className="flex-1 flex justify-end pr-6">
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -419,7 +448,6 @@ export function TradingPage() {
         </nav>
       </div>
 
-      {/* Sheets */}
       <ProfileSheet
         open={profileOpen}
         onClose={() => setProfileOpen(false)}

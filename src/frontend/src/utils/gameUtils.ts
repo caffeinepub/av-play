@@ -17,14 +17,36 @@ export function getPhaseTimeRemaining(
 /**
  * Returns a unified 0-60 countdown based on wall-clock time.
  * All users see the same countdown synced to real time.
- * 60 = start of round, 0 = end of round.
- * Betting is open when timeRemaining > 10.
  */
 export function getUnifiedTimeRemaining(): number {
   const CYCLE_MS = 60 * 1000;
-  const positionInCycle = Date.now() % CYCLE_MS; // 0..59999 ms
+  const positionInCycle = Date.now() % CYCLE_MS;
   const elapsedSeconds = positionInCycle / 1000;
-  return 60 - elapsedSeconds; // counts from 60 down to ~0
+  return 60 - elapsedSeconds;
+}
+
+/**
+ * Returns the current round number (minutes since epoch).
+ * Same for all users at the same wall-clock time.
+ */
+export function getRoundNumber(): number {
+  return Math.floor(Date.now() / 60_000);
+}
+
+/**
+ * Deterministic result for a given round number.
+ * All users get the same result for the same round.
+ */
+export function getResultForRound(roundId: number): {
+  color: "red" | "green" | "violet";
+  size: "BIG" | "SMALL";
+} {
+  const h = (roundId * 1664525 + 1013904223) >>> 0;
+  const colorIdx = h % 3;
+  const sizeIdx = (h >> 2) % 2;
+  const color = (["red", "green", "violet"] as const)[colorIdx];
+  const size = (["BIG", "SMALL"] as const)[sizeIdx];
+  return { color, size };
 }
 
 /**
