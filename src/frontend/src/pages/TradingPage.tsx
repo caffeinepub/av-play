@@ -2,34 +2,40 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "@tanstack/react-router";
-import { LogOut, Settings } from "lucide-react";
+import { Home, LogOut, Settings, User, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ActivitySheet } from "../components/ActivitySheet";
 import { BetPanel } from "../components/BetPanel";
 import { ColorCard } from "../components/ColorCard";
 import { CountdownRing } from "../components/CountdownRing";
+import { LiveTicker } from "../components/LiveTicker";
+import { ProfileSheet } from "../components/ProfileSheet";
 import { RoundHistory } from "../components/RoundHistory";
 import { WalletPanel } from "../components/WalletPanel";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
-import { useGameState, useIsAdmin, useUserProfile } from "../hooks/useQueries";
+import { useGameState, useUserProfile } from "../hooks/useQueries";
 import { getPhaseTimeRemaining } from "../utils/gameUtils";
 import { playLoseSound, playWinChime } from "../utils/sound";
+
+const ADMIN_AUTH_KEY = "av_admin_auth";
 
 export function TradingPage() {
   const { clear, identity } = useInternetIdentity();
   const { actor } = useActor();
   const gameState = useGameState();
   const userProfile = useUserProfile();
-  const isAdmin = useIsAdmin();
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(45);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const prevRoundIdRef = useRef<bigint | null>(null);
   const registeredRef = useRef(false);
 
-  // Register the caller with the access control system on first mount.
-  // The first caller whose token matches becomes admin; everyone else becomes a regular user.
+  const isAdminAuthenticated = localStorage.getItem(ADMIN_AUTH_KEY) === "1";
+
   useEffect(() => {
     if (!actor || registeredRef.current) return;
     registeredRef.current = true;
@@ -37,9 +43,7 @@ export function TradingPage() {
       ._initializeAccessControlWithSecret(
         import.meta.env.VITE_CAFFEINE_ADMIN_TOKEN ?? "",
       )
-      .catch(() => {
-        // Silently ignore — user may already be registered.
-      });
+      .catch(() => {});
   }, [actor]);
 
   const gs = gameState.data;
@@ -60,7 +64,6 @@ export function TradingPage() {
   useEffect(() => {
     if (!gs || !profile) return;
     const { currentRoundId: rid, roundHistory: rh } = gs;
-
     if (prevRoundIdRef.current !== null && prevRoundIdRef.current !== rid) {
       const prevRound = rh.find((r) => r.roundId === prevRoundIdRef.current);
       if (prevRound?.result) {
@@ -71,19 +74,18 @@ export function TradingPage() {
           if (userBet[1].betColor === prevRound.result) {
             playWinChime();
             toast.success(
-              `🎉 You WON! Bet on ${prevRound.result.toUpperCase()}`,
+              `\uD83C\uDF89 You WON! Bet on ${prevRound.result.toUpperCase()}`,
             );
           } else {
             playLoseSound();
             toast.error(
-              `😞 You lost. Result was ${prevRound.result.toUpperCase()}`,
+              `\uD83D\uDE1E You lost. Result was ${prevRound.result.toUpperCase()}`,
             );
           }
         }
       }
       setSelectedColor(null);
     }
-
     prevRoundIdRef.current = rid;
   }, [gs, profile, identity]);
 
@@ -114,7 +116,7 @@ export function TradingPage() {
   const shortPrincipal = principal ? `${principal.slice(0, 8)}...` : "Guest";
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col pb-24">
       <header
         className="sticky top-0 z-40 border-b border-border/30"
         style={{
@@ -144,7 +146,7 @@ export function TradingPage() {
           </nav>
 
           <div className="flex items-center gap-2">
-            {isAdmin.data && (
+            {isAdminAuthenticated && (
               <Link to="/admin">
                 <Button
                   size="sm"
@@ -238,13 +240,7 @@ export function TradingPage() {
                               : revealResult === "green"
                                 ? "#33F5A4"
                                 : "#B455FF",
-                          textShadow: `0 0 20px ${
-                            revealResult === "red"
-                              ? "#FF4A4A"
-                              : revealResult === "green"
-                                ? "#33F5A4"
-                                : "#B455FF"
-                          }99`,
+                          textShadow: `0 0 20px ${revealResult === "red" ? "#FF4A4A" : revealResult === "green" ? "#33F5A4" : "#B455FF"}99`,
                         }}
                       >
                         {revealResult} wins!
@@ -292,19 +288,132 @@ export function TradingPage() {
         )}
       </main>
 
-      <footer className="border-t border-border/20 py-4 px-4 text-center">
-        <p className="text-[11px] text-muted-foreground/50">
-          © {new Date().getFullYear()}. Built with love using{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            className="hover:text-muted-foreground transition-colors"
-            target="_blank"
-            rel="noreferrer"
-          >
-            caffeine.ai
-          </a>
-        </p>
-      </footer>
+      {/* Live ticker + Bottom Nav stacked at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 z-50">
+        {/* Live activity ticker */}
+        <LiveTicker />
+
+        {/* Bottom Navigation Bar */}
+        <nav
+          className="flex items-center"
+          style={{
+            background: "oklch(0.09 0.018 240 / 0.97)",
+            borderTop: "1px solid oklch(0.25 0.04 240 / 0.5)",
+            backdropFilter: "blur(16px)",
+            height: "64px",
+          }}
+        >
+          {/* Activity button - left */}
+          <div className="flex-1 flex justify-start pl-6">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setActivityOpen(true)}
+              className="flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-colors"
+              data-ocid="bottom_nav.activity.button"
+            >
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center relative"
+                style={{
+                  background: "oklch(0.57 0.28 300 / 0.12)",
+                  border: "1.5px solid oklch(0.57 0.28 300 / 0.4)",
+                }}
+              >
+                <Zap
+                  className="w-5 h-5"
+                  style={{ color: "oklch(0.68 0.25 300)" }}
+                />
+                {/* Dot indicator if can claim */}
+                {profile &&
+                  (() => {
+                    const lastMs = Number(profile.lastBonusTime) / 1_000_000;
+                    const canClaim = Date.now() - lastMs > 24 * 60 * 60 * 1000;
+                    return canClaim ? (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full animate-pulse"
+                        style={{
+                          background: "oklch(0.85 0.2 168)",
+                          border: "2px solid oklch(0.09 0.018 240)",
+                        }}
+                      />
+                    ) : null;
+                  })()}
+              </div>
+              <span
+                className="text-[10px] font-semibold tracking-wide uppercase"
+                style={{ color: "oklch(0.68 0.25 300)" }}
+              >
+                Activity
+              </span>
+            </motion.button>
+          </div>
+
+          {/* Home button - center */}
+          <Link to="/">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              className="flex flex-col items-center gap-1 px-6 py-2 rounded-xl transition-colors"
+              style={{ color: "oklch(0.85 0.2 168)" }}
+              data-ocid="bottom_nav.home.button"
+            >
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{
+                  background: "oklch(0.85 0.2 168 / 0.15)",
+                  border: "1.5px solid oklch(0.85 0.2 168 / 0.5)",
+                  boxShadow: "0 0 12px oklch(0.85 0.2 168 / 0.3)",
+                }}
+              >
+                <Home className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-semibold tracking-wide uppercase">
+                Home
+              </span>
+            </motion.button>
+          </Link>
+
+          {/* Profile button - right */}
+          <div className="flex-1 flex justify-end pr-6">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setProfileOpen(true)}
+              className="flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-colors"
+              data-ocid="bottom_nav.profile.button"
+            >
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{
+                  background: "oklch(0.57 0.28 300 / 0.1)",
+                  border: "1.5px solid oklch(0.57 0.28 300 / 0.35)",
+                }}
+              >
+                <User
+                  className="w-5 h-5"
+                  style={{ color: "oklch(0.57 0.28 300)" }}
+                />
+              </div>
+              <span
+                className="text-[10px] font-semibold tracking-wide uppercase"
+                style={{ color: "oklch(0.57 0.28 300)" }}
+              >
+                Profile
+              </span>
+            </motion.button>
+          </div>
+        </nav>
+      </div>
+
+      {/* Sheets */}
+      <ProfileSheet
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        profile={profile}
+        shortPrincipal={shortPrincipal}
+      />
+      <ActivitySheet
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+        profile={profile}
+      />
     </div>
   );
 }

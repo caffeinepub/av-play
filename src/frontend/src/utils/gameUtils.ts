@@ -1,7 +1,7 @@
 export const PHASE_DURATIONS = {
-  betting: 45,
+  betting: 50,
   reveal: 5,
-  cooldown: 10,
+  cooldown: 5,
 };
 
 export function getPhaseTimeRemaining(
@@ -10,7 +10,7 @@ export function getPhaseTimeRemaining(
 ): number {
   const phaseStartMs = Number(phaseStartTimestampNs) / 1_000_000;
   const elapsed = (Date.now() - phaseStartMs) / 1000; // seconds
-  const duration = PHASE_DURATIONS[phase as keyof typeof PHASE_DURATIONS] ?? 45;
+  const duration = PHASE_DURATIONS[phase as keyof typeof PHASE_DURATIONS] ?? 50;
   return Math.max(0, duration - elapsed);
 }
 

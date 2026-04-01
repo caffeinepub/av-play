@@ -57,6 +57,18 @@ export interface UserProfile {
     dailyStreak: bigint;
     betHistory: Array<Bet>;
 }
+export interface DepositRequest {
+    user: Principal;
+    amount: bigint;
+    bonusAmount: bigint;
+    requestTime: Time;
+    approved: boolean;
+    index: bigint;
+}
+export interface PaymentMethod {
+    upiId: string;
+    qrImageUrl: string;
+}
 export enum UserRole {
     admin = "admin",
     user = "user",
@@ -65,11 +77,13 @@ export enum UserRole {
 export interface backendInterface {
     _initializeAccessControlWithSecret(secret: string): Promise<void>;
     adjustUserCoins(user: Principal, amount: bigint): Promise<void>;
+    approveDeposit(requestIndex: bigint): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     claimDailyBonus(): Promise<void>;
     clearManualOverride(): Promise<void>;
     depositCoins(amount: bigint): Promise<void>;
     getAdminLogs(): Promise<Array<string>>;
+    getAllDepositRequests(): Promise<Array<DepositRequest>>;
     getAllUserHoldings(): Promise<Array<[Principal, bigint]>>;
     getAllWithdrawalRequests(): Promise<Array<[Principal, WithdrawalRequest]>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
@@ -89,6 +103,7 @@ export interface backendInterface {
         multipliers: MultiplierConfig;
         phaseStartTimestamp: Time;
     }>;
+    getPaymentMethod(): Promise<PaymentMethod>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     markWithdrawalProcessed(user: Principal, index: bigint): Promise<void>;
@@ -97,5 +112,7 @@ export interface backendInterface {
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     setManualResultOverride(result: string): Promise<void>;
     setMultipliers(red: number, green: number, violet: number): Promise<void>;
+    setPaymentMethod(upiId: string, qrImageUrl: string): Promise<void>;
+    submitDepositRequest(amount: bigint): Promise<void>;
     toggleAutoResolve(): Promise<void>;
 }

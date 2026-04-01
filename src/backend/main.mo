@@ -18,8 +18,9 @@ actor {
   let startingCoins = 100;
   let betLimit = 100;
   let roundTimeSeconds = 60;
-  let betPhaseSeconds = 45;
+  let betPhaseSeconds = 50;
   let revealPhaseSeconds = 5;
+  let cooldownPhaseSeconds = 5;
   let dailyBonusCooldown = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
 
   // Types
@@ -69,6 +70,20 @@ actor {
     totalGreenBets : Nat;
     totalVioletBets : Nat;
     startTime : Time.Time;
+  };
+
+  public type DepositRequest = {
+    user : Principal;
+    amount : Nat;
+    bonusAmount : Nat;
+    requestTime : Time.Time;
+    approved : Bool;
+    index : Nat;
+  };
+
+  public type PaymentMethod = {
+    upiId : Text;
+    qrImageUrl : Text;
   };
 
   // Conversion function to immutable, returned in query functions
@@ -131,6 +146,14 @@ actor {
   let cooldownPhaseRounds = Map.empty<Nat, Round>();
   let completedRounds = Map.empty<Nat, Round>();
   let adminLogs = List.empty<Text>();
+
+  // Deposit requests state
+  let depositRequests = List.empty<DepositRequest>();
+  var depositRequestCount : Nat = 0;
+
+  // Payment method state
+  var paymentUpiId : Text = "6205006521@okbizaxis";
+  var paymentQrImageUrl : Text = "/assets/fd4426e3-53eb-407e-a99a-c7978d669943_image-019d4ab9-3854-716b-93ac-e620b7e024db.png";
 
   // Authorization
   let accessControlState = AccessControl.initState();
@@ -333,6 +356,112 @@ actor {
   // Current round phase - Public
   public query ({ caller }) func getCurrentRoundPhase() : async Text {
     getPhaseString(currentPhase);
+  };
+
+  // Get payment method (public)
+  public query func getPaymentMethod() : async PaymentMethod {
+    { upiId = paymentUpiId; qrImageUrl = paymentQrImageUrl };
+  };
+
+  // Set payment method (admin only)
+  public shared ({ caller }) func setPaymentMethod(upiId : Text, qrImageUrl : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update payment method");
+    };
+    paymentUpiId := upiId;
+    paymentQrImageUrl := qrImageUrl;
+    adminLogs.add("Admin updated payment method: UPI=" # upiId);
+  };
+
+  // Submit deposit request (user) - does NOT credit coins yet
+  public shared ({ caller }) func submitDepositRequest(amount : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can submit deposit requests");
+    };
+    if (amount <= 0) { Runtime.trap("Must deposit more than 0") };
+
+    let bonusAmount = if (amount >= 100) { 100 } else { 0 };
+    let request : DepositRequest = {
+      user = caller;
+      amount;
+      bonusAmount;
+      requestTime = Time.now();
+      approved = false;
+      index = depositRequestCount;
+    };
+    depositRequestCount += 1;
+    depositRequests.add(request);
+    adminLogs.add("Deposit request: User " # caller.toText() # " requested " # amount.toText() # " coins");
+  };
+
+  // Get all pending deposit requests (admin only)
+  public query ({ caller }) func getAllDepositRequests() : async [DepositRequest] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can view deposit requests");
+    };
+    depositRequests.toArray();
+  };
+
+  // Approve deposit request (admin only) - credits coins to user
+  public shared ({ caller }) func approveDeposit(requestIndex : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can approve deposits");
+    };
+
+    let requestsArray = depositRequests.toArray();
+    var found = false;
+    var approvedUser : Principal = Principal.fromText("aaaaa-aa");
+    var approvedAmount : Nat = 0;
+    var approvedBonus : Nat = 0;
+
+    for (req in requestsArray.values()) {
+      if (req.index == requestIndex and not req.approved) {
+        found := true;
+        approvedUser := req.user;
+        approvedAmount := req.amount;
+        approvedBonus := req.bonusAmount;
+      };
+    };
+
+    if (not found) {
+      Runtime.trap("Deposit request not found or already approved");
+    };
+
+    // Credit coins to user
+    let existingUser = getUserProfileInternal(approvedUser);
+    let totalCoins = approvedAmount + approvedBonus;
+    let newUser = {
+      coins = existingUser.coins + totalCoins;
+      lastBonusTime = existingUser.lastBonusTime;
+      betHistory = existingUser.betHistory;
+      withdrawalRequests = existingUser.withdrawalRequests;
+      dailyStreak = existingUser.dailyStreak;
+    };
+    userState.add(approvedUser, newUser);
+
+    // Mark request as approved by rebuilding the list
+    let updatedRequests = List.empty<DepositRequest>();
+    for (req in requestsArray.values()) {
+      if (req.index == requestIndex) {
+        updatedRequests.add({
+          user = req.user;
+          amount = req.amount;
+          bonusAmount = req.bonusAmount;
+          requestTime = req.requestTime;
+          approved = true;
+          index = req.index;
+        });
+      } else {
+        updatedRequests.add(req);
+      };
+    };
+    // Replace list contents
+    depositRequests.clear();
+    for (req in updatedRequests.values()) {
+      depositRequests.add(req);
+    };
+
+    adminLogs.add("Admin approved deposit for user " # approvedUser.toText() # ": " # approvedAmount.toText() # " + " # approvedBonus.toText() # " bonus coins");
   };
 
   // TIME-BASED

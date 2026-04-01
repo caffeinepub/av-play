@@ -144,6 +144,18 @@ export enum UserRole {
     user = "user",
     guest = "guest"
 }
+export interface DepositRequest {
+    user: Principal;
+    amount: bigint;
+    bonusAmount: bigint;
+    requestTime: Time;
+    approved: boolean;
+    index: bigint;
+}
+export interface PaymentMethod {
+    upiId: string;
+    qrImageUrl: string;
+}
 export interface backendInterface {
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     adjustUserCoins(user: Principal, amount: bigint): Promise<void>;
@@ -179,6 +191,11 @@ export interface backendInterface {
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     setManualResultOverride(result: string): Promise<void>;
     setMultipliers(red: number, green: number, violet: number): Promise<void>;
+    approveDeposit(requestIndex: bigint): Promise<void>;
+    getAllDepositRequests(): Promise<Array<DepositRequest>>;
+    getPaymentMethod(): Promise<PaymentMethod>;
+    setPaymentMethod(upiId: string, qrImageUrl: string): Promise<void>;
+    submitDepositRequest(amount: bigint): Promise<void>;
     toggleAutoResolve(): Promise<void>;
 }
 import type { Bet as _Bet, GamePhase as _GamePhase, MultiplierConfig as _MultiplierConfig, RoundView as _RoundView, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
@@ -517,6 +534,26 @@ export class Backend implements backendInterface {
             const result = await this.actor.toggleAutoResolve();
             return result;
         }
+    }
+    async approveDeposit(arg0: bigint): Promise<void> {
+        const result = await this.actor.approveDeposit(arg0);
+        return result;
+    }
+    async getAllDepositRequests(): Promise<Array<DepositRequest>> {
+        const result = await this.actor.getAllDepositRequests();
+        return result;
+    }
+    async getPaymentMethod(): Promise<PaymentMethod> {
+        const result = await this.actor.getPaymentMethod();
+        return result;
+    }
+    async setPaymentMethod(arg0: string, arg1: string): Promise<void> {
+        const result = await this.actor.setPaymentMethod(arg0, arg1);
+        return result;
+    }
+    async submitDepositRequest(arg0: bigint): Promise<void> {
+        const result = await this.actor.submitDepositRequest(arg0);
+        return result;
     }
 }
 function from_candid_GamePhase_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _GamePhase): GamePhase {

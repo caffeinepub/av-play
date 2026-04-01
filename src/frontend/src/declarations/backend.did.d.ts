@@ -51,14 +51,28 @@ export interface WithdrawalRequest {
   'amount' : bigint,
   'requestTime' : Time,
 }
+export interface DepositRequest {
+  'user' : Principal,
+  'amount' : bigint,
+  'bonusAmount' : bigint,
+  'requestTime' : Time,
+  'approved' : boolean,
+  'index' : bigint,
+}
+export interface PaymentMethod {
+  'upiId' : string,
+  'qrImageUrl' : string,
+}
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'adjustUserCoins' : ActorMethod<[Principal, bigint], undefined>,
+  'approveDeposit' : ActorMethod<[bigint], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'claimDailyBonus' : ActorMethod<[], undefined>,
   'clearManualOverride' : ActorMethod<[], undefined>,
   'depositCoins' : ActorMethod<[bigint], undefined>,
   'getAdminLogs' : ActorMethod<[], Array<string>>,
+  'getAllDepositRequests' : ActorMethod<[], Array<DepositRequest>>,
   'getAllUserHoldings' : ActorMethod<[], Array<[Principal, bigint]>>,
   'getAllWithdrawalRequests' : ActorMethod<
     [],
@@ -83,6 +97,7 @@ export interface _SERVICE {
       'phaseStartTimestamp' : Time,
     }
   >,
+  'getPaymentMethod' : ActorMethod<[], PaymentMethod>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'markWithdrawalProcessed' : ActorMethod<[Principal, bigint], undefined>,
@@ -91,6 +106,8 @@ export interface _SERVICE {
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'setManualResultOverride' : ActorMethod<[string], undefined>,
   'setMultipliers' : ActorMethod<[number, number, number], undefined>,
+  'setPaymentMethod' : ActorMethod<[string, string], undefined>,
+  'submitDepositRequest' : ActorMethod<[bigint], undefined>,
   'toggleAutoResolve' : ActorMethod<[], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;

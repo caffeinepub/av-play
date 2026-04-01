@@ -66,6 +66,31 @@ export function useIsAdmin() {
   });
 }
 
+export function usePaymentMethod() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["paymentMethod"],
+    queryFn: async () => {
+      if (!actor)
+        return {
+          upiId: "6205006521@okbizaxis",
+          qrImageUrl:
+            "/assets/fd4426e3-53eb-407e-a99a-c7978d669943_image-019d4ab9-3854-716b-93ac-e620b7e024db.png",
+        };
+      try {
+        return await actor.getPaymentMethod();
+      } catch {
+        return {
+          upiId: "6205006521@okbizaxis",
+          qrImageUrl:
+            "/assets/fd4426e3-53eb-407e-a99a-c7978d669943_image-019d4ab9-3854-716b-93ac-e620b7e024db.png",
+        };
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
 export function usePlaceBet() {
   const { actor } = useActor();
   const qc = useQueryClient();
@@ -91,6 +116,20 @@ export function useClaimBonus() {
     mutationFn: async () => {
       if (!actor) throw new Error("Not connected");
       return actor.claimDailyBonus();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["userProfile"] });
+    },
+  });
+}
+
+export function useSubmitDepositRequest() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (amount: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.submitDepositRequest(amount);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["userProfile"] });
@@ -162,6 +201,51 @@ export function useAllWithdrawalRequests() {
     },
     enabled: !!actor && !isFetching,
     refetchInterval: 5000,
+  });
+}
+
+export function useAllDepositRequests() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["depositRequests"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getAllDepositRequests();
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 5000,
+  });
+}
+
+export function useApproveDeposit() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (requestIndex: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.approveDeposit(requestIndex);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["depositRequests"] });
+      qc.invalidateQueries({ queryKey: ["allUserHoldings"] });
+    },
+  });
+}
+
+export function useSetPaymentMethod() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      upiId,
+      qrImageUrl,
+    }: { upiId: string; qrImageUrl: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.setPaymentMethod(upiId, qrImageUrl);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["paymentMethod"] });
+    },
   });
 }
 

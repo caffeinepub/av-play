@@ -264,3 +264,13 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.85 0.2 168 / 0.5);
 }
+
+/* Live ticker scroll */
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}

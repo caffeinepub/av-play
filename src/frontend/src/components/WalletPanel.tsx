@@ -11,6 +11,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   CheckCircle2,
+  Clock,
   Coins,
   Copy,
   Flame,
@@ -22,14 +23,11 @@ import { toast } from "sonner";
 import type { UserProfile } from "../backend.d";
 import {
   useClaimBonus,
-  useDepositCoins,
+  usePaymentMethod,
   useRequestWithdrawal,
+  useSubmitDepositRequest,
 } from "../hooks/useQueries";
 import { canClaimBonus, formatCoins } from "../utils/gameUtils";
-
-const UPI_ID = "6205006521@okbizaxis";
-const QR_IMAGE =
-  "/assets/fd4426e3-53eb-407e-a99a-c7978d669943_image-019d4ab9-3854-716b-93ac-e620b7e024db.png";
 
 interface WalletPanelProps {
   profile: UserProfile | null;
@@ -40,13 +38,19 @@ export function WalletPanel({ profile }: WalletPanelProps) {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [depositStep, setDepositStep] = useState<"enter" | "pay" | "confirm">(
-    "enter",
-  );
+  const [depositStep, setDepositStep] = useState<
+    "enter" | "pay" | "confirm" | "submitted"
+  >("enter");
   const [copied, setCopied] = useState(false);
-  const deposit = useDepositCoins();
+  const submitDeposit = useSubmitDepositRequest();
   const withdraw = useRequestWithdrawal();
   const claimBonus = useClaimBonus();
+  const paymentMethod = usePaymentMethod();
+
+  const upiId = paymentMethod.data?.upiId ?? "6205006521@okbizaxis";
+  const qrImageUrl =
+    paymentMethod.data?.qrImageUrl ??
+    "/assets/fd4426e3-53eb-407e-a99a-c7978d669943_image-019d4ab9-3854-716b-93ac-e620b7e024db.png";
 
   const coins = profile?.coins ?? 0n;
   const streak = profile?.dailyStreak ?? 0n;
@@ -58,26 +62,18 @@ export function WalletPanel({ profile }: WalletPanelProps) {
   const coinsToCredit = isValidAmount ? parsedAmount : 0;
 
   const handleCopyUpi = () => {
-    navigator.clipboard.writeText(UPI_ID);
+    navigator.clipboard.writeText(upiId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleConfirmDeposit = async () => {
+  const handleSubmitDeposit = async () => {
     const amt = parsedAmount;
     try {
-      const totalCoins = qualifiesForBonus ? BigInt(amt + 100) : BigInt(amt);
-      await deposit.mutateAsync(totalCoins);
-      toast.success(
-        qualifiesForBonus
-          ? `${amt} coins + 100 bonus coins added!`
-          : `${amt} coins added to your balance!`,
-      );
-      setDepositAmount("");
-      setDepositStep("enter");
-      setDepositOpen(false);
+      await submitDeposit.mutateAsync(BigInt(amt));
+      setDepositStep("submitted");
     } catch (e: any) {
-      toast.error(e?.message || "Deposit failed");
+      toast.error(e?.message || "Failed to submit deposit request");
     }
   };
 
@@ -183,7 +179,9 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                   ? "Deposit Coins"
                   : depositStep === "pay"
                     ? "Pay via UPI"
-                    : "Confirm Payment"}
+                    : depositStep === "confirm"
+                      ? "Confirm Payment"
+                      : "Request Submitted"}
               </DialogTitle>
             </DialogHeader>
 
@@ -209,7 +207,7 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                   />
                   <span style={{ color: "oklch(0.75 0.18 300)" }}>
                     <strong>Deposit ₹100 or more</strong> and get a{" "}
-                    <strong>100 bonus coins</strong> added instantly!
+                    <strong>100 bonus coins</strong> added!
                   </span>
                 </div>
 
@@ -231,7 +229,8 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                     <span className="font-bold text-neon-green">
                       {coinsToCredit}
                       {qualifiesForBonus ? " + 100 bonus" : ""} coins
-                    </span>
+                    </span>{" "}
+                    after admin approval
                   </div>
                 )}
 
@@ -278,7 +277,7 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                     style={{ background: "white", width: 180, height: 180 }}
                   >
                     <img
-                      src={QR_IMAGE}
+                      src={qrImageUrl}
                       alt="UPI QR Code"
                       className="w-full h-full object-contain"
                     />
@@ -298,7 +297,7 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                       UPI ID
                     </p>
                     <p className="text-sm font-mono font-bold text-foreground">
-                      {UPI_ID}
+                      {upiId}
                     </p>
                   </div>
                   <Button
@@ -347,12 +346,8 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                     Confirm your payment
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Once you confirm, your coins will be credited. Make sure you
-                    have completed the UPI payment of{" "}
-                    <span className="font-bold text-neon-green">
-                      ₹{parsedAmount}
-                    </span>
-                    .
+                    Click below to submit your deposit request. Admin will
+                    verify your payment and credit your coins.
                   </p>
                 </div>
 
@@ -378,7 +373,7 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                     border: "1px solid oklch(0.85 0.2 168 / 0.3)",
                   }}
                 >
-                  Total coins:{" "}
+                  Total coins (after approval):{" "}
                   <span className="text-neon-green">
                     {coinsToCredit + (qualifiesForBonus ? 100 : 0)}
                   </span>
@@ -393,18 +388,54 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                     Back
                   </Button>
                   <Button
-                    onClick={handleConfirmDeposit}
-                    disabled={deposit.isPending}
+                    onClick={handleSubmitDeposit}
+                    disabled={submitDeposit.isPending}
                     data-ocid="wallet.deposit.submit_button"
                     className="flex-1 btn-gradient text-background font-bold"
                   >
-                    {deposit.isPending ? (
+                    {submitDeposit.isPending ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      "Confirm & Credit"
+                      "Submit Request"
                     )}
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {/* STEP 4: Submitted */}
+            {depositStep === "submitted" && (
+              <div className="space-y-4 pt-2 text-center">
+                <div className="text-5xl">⏳</div>
+                <p className="text-base font-bold text-foreground">
+                  Request Submitted!
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Your deposit request for{" "}
+                  <span className="font-bold text-neon-green">
+                    ₹{parsedAmount}
+                  </span>{" "}
+                  has been sent. Admin will verify and credit your coins
+                  shortly.
+                </p>
+                <div
+                  className="flex items-center justify-center gap-2 rounded-lg p-3 text-xs"
+                  style={{
+                    background: "oklch(0.85 0.2 168 / 0.08)",
+                    border: "1px solid oklch(0.85 0.2 168 / 0.3)",
+                  }}
+                >
+                  <Clock className="w-4 h-4 text-neon-green" />
+                  <span className="text-neon-green font-semibold">
+                    Pending admin approval
+                  </span>
+                </div>
+                <Button
+                  onClick={() => handleDepositClose(false)}
+                  className="w-full btn-gradient text-background font-bold"
+                >
+                  Close
+                </Button>
               </div>
             )}
           </DialogContent>
