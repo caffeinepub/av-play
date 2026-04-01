@@ -55,6 +55,44 @@ export function ProfileSheet({
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [copied, setCopied] = useState(false);
+  const [bankDetails, setBankDetails] = useState(() => {
+    try {
+      const saved = localStorage.getItem("av_bank_details");
+      return saved
+        ? JSON.parse(saved)
+        : { name: "", accountNumber: "", ifsc: "", mobile: "" };
+    } catch {
+      return { name: "", accountNumber: "", ifsc: "", mobile: "" };
+    }
+  });
+  const [editingBank, setEditingBank] = useState(false);
+  const [bankForm, setBankForm] = useState({
+    name: "",
+    accountNumber: "",
+    ifsc: "",
+    mobile: "",
+  });
+  const bankDetailsSaved =
+    bankDetails.name &&
+    bankDetails.accountNumber &&
+    bankDetails.ifsc &&
+    bankDetails.mobile;
+
+  const saveBankDetails = () => {
+    if (
+      !bankForm.name ||
+      !bankForm.accountNumber ||
+      !bankForm.ifsc ||
+      !bankForm.mobile
+    ) {
+      toast.error("Please fill all fields");
+      return;
+    }
+    localStorage.setItem("av_bank_details", JSON.stringify(bankForm));
+    setBankDetails(bankForm);
+    setEditingBank(false);
+    toast.success("Bank details saved!");
+  };
 
   const submitDeposit = useSubmitDepositRequest();
   const withdraw = useRequestWithdrawal();
@@ -573,63 +611,230 @@ export function ProfileSheet({
             {/* WITHDRAW TAB */}
             {activeTab === "withdraw" && (
               <div className="space-y-4">
-                {/* Request withdrawal */}
+                {/* Bank Details Section */}
                 <div
                   className="rounded-xl p-4 space-y-3"
                   style={{
                     background: "oklch(0.11 0.02 240 / 0.8)",
-                    border: "1px solid oklch(0.25 0.04 240 / 0.5)",
+                    border: bankDetailsSaved
+                      ? "1px solid oklch(0.85 0.2 168 / 0.4)"
+                      : "1px solid oklch(0.60 0.22 25 / 0.5)",
                   }}
                 >
-                  <div className="flex items-center gap-2">
-                    <ArrowUpCircle
-                      className="w-4 h-4"
-                      style={{ color: "oklch(0.60 0.22 25)" }}
-                    />
-                    <span className="text-sm font-semibold text-foreground">
-                      Request Withdrawal
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Withdrawals are processed manually by admins.
-                  </p>
-                  <div
-                    className="flex items-center justify-between rounded-lg p-3"
-                    style={{
-                      background: "oklch(0.85 0.2 168 / 0.07)",
-                      border: "1px solid oklch(0.85 0.2 168 / 0.2)",
-                    }}
-                  >
-                    <span className="text-xs text-muted-foreground">
-                      Available balance
-                    </span>
-                    <span className="text-sm font-black text-neon-green">
-                      {formatCoins(coins)} coins
-                    </span>
-                  </div>
-                  <Input
-                    type="number"
-                    placeholder="Amount to withdraw..."
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    className="bg-muted/30 border-border/40"
-                  />
-                  <Button
-                    onClick={handleWithdraw}
-                    disabled={withdraw.isPending}
-                    className="w-full font-bold"
-                    style={{
-                      background: "oklch(0.60 0.22 25)",
-                      color: "white",
-                    }}
-                  >
-                    {withdraw.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      "Request Withdrawal"
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User
+                        className="w-4 h-4"
+                        style={{
+                          color: bankDetailsSaved
+                            ? "oklch(0.85 0.2 168)"
+                            : "oklch(0.60 0.22 25)",
+                        }}
+                      />
+                      <span className="text-sm font-semibold text-foreground">
+                        Bank Details
+                      </span>
+                    </div>
+                    {bankDetailsSaved && !editingBank && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBankForm(bankDetails);
+                          setEditingBank(true);
+                        }}
+                        className="text-[11px] font-semibold px-2 py-1 rounded-md"
+                        style={{
+                          color: "oklch(0.85 0.2 168)",
+                          background: "oklch(0.85 0.2 168 / 0.1)",
+                        }}
+                      >
+                        Edit
+                      </button>
                     )}
-                  </Button>
+                  </div>
+
+                  {!bankDetailsSaved && !editingBank && (
+                    <div className="space-y-2">
+                      <div
+                        className="rounded-lg p-2.5 text-xs"
+                        style={{
+                          background: "oklch(0.60 0.22 25 / 0.1)",
+                          border: "1px solid oklch(0.60 0.22 25 / 0.3)",
+                        }}
+                      >
+                        <span style={{ color: "oklch(0.70 0.18 25)" }}>
+                          ⚠️ Add your bank details before requesting a
+                          withdrawal.
+                        </span>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          setBankForm({
+                            name: "",
+                            accountNumber: "",
+                            ifsc: "",
+                            mobile: "",
+                          });
+                          setEditingBank(true);
+                        }}
+                        className="w-full text-xs font-bold"
+                        data-ocid="bank.add.button"
+                        style={{
+                          background: "oklch(0.60 0.22 25 / 0.2)",
+                          border: "1px solid oklch(0.60 0.22 25 / 0.5)",
+                          color: "oklch(0.70 0.18 25)",
+                        }}
+                      >
+                        + Add Bank Details
+                      </Button>
+                    </div>
+                  )}
+
+                  {bankDetailsSaved && !editingBank && (
+                    <div className="space-y-1.5">
+                      {[
+                        { label: "Name", value: bankDetails.name },
+                        {
+                          label: "Account No.",
+                          value: bankDetails.accountNumber,
+                        },
+                        { label: "IFSC Code", value: bankDetails.ifsc },
+                        { label: "Mobile", value: bankDetails.mobile },
+                      ].map(({ label, value }) => (
+                        <div
+                          key={label}
+                          className="flex items-center justify-between text-xs"
+                        >
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="font-semibold text-foreground font-mono">
+                            {value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(!bankDetailsSaved || editingBank) && (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Full Name"
+                        value={bankForm.name}
+                        onChange={(e) =>
+                          setBankForm({ ...bankForm, name: e.target.value })
+                        }
+                        className="bg-muted/30 border-border/40 text-sm"
+                      />
+                      <Input
+                        placeholder="Account Number"
+                        value={bankForm.accountNumber}
+                        onChange={(e) =>
+                          setBankForm({
+                            ...bankForm,
+                            accountNumber: e.target.value,
+                          })
+                        }
+                        className="bg-muted/30 border-border/40 text-sm"
+                      />
+                      <Input
+                        placeholder="IFSC Code"
+                        value={bankForm.ifsc}
+                        onChange={(e) =>
+                          setBankForm({
+                            ...bankForm,
+                            ifsc: e.target.value.toUpperCase(),
+                          })
+                        }
+                        className="bg-muted/30 border-border/40 text-sm"
+                      />
+                      <Input
+                        placeholder="Mobile Number"
+                        type="tel"
+                        value={bankForm.mobile}
+                        onChange={(e) =>
+                          setBankForm({ ...bankForm, mobile: e.target.value })
+                        }
+                        className="bg-muted/30 border-border/40 text-sm"
+                      />
+                      <div className="flex gap-2">
+                        {editingBank && (
+                          <Button
+                            variant="outline"
+                            onClick={() => setEditingBank(false)}
+                            className="flex-1 text-xs"
+                          >
+                            Cancel
+                          </Button>
+                        )}
+                        <Button
+                          onClick={saveBankDetails}
+                          className="flex-1 btn-gradient text-background font-bold text-xs"
+                        >
+                          Save Details
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {/* Request withdrawal - only shown after bank details are saved */}
+                {bankDetailsSaved && !editingBank && (
+                  <div
+                    className="rounded-xl p-4 space-y-3"
+                    style={{
+                      background: "oklch(0.11 0.02 240 / 0.8)",
+                      border: "1px solid oklch(0.25 0.04 240 / 0.5)",
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ArrowUpCircle
+                        className="w-4 h-4"
+                        style={{ color: "oklch(0.60 0.22 25)" }}
+                      />
+                      <span className="text-sm font-semibold text-foreground">
+                        Request Withdrawal
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Withdrawals are processed manually by admins.
+                    </p>
+                    <div
+                      className="flex items-center justify-between rounded-lg p-3"
+                      style={{
+                        background: "oklch(0.85 0.2 168 / 0.07)",
+                        border: "1px solid oklch(0.85 0.2 168 / 0.2)",
+                      }}
+                    >
+                      <span className="text-xs text-muted-foreground">
+                        Available balance
+                      </span>
+                      <span className="text-sm font-black text-neon-green">
+                        {formatCoins(coins)} coins
+                      </span>
+                    </div>
+                    <Input
+                      type="number"
+                      placeholder="Amount to withdraw..."
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      className="bg-muted/30 border-border/40"
+                    />
+                    <Button
+                      onClick={handleWithdraw}
+                      disabled={withdraw.isPending}
+                      className="w-full font-bold"
+                      style={{
+                        background: "oklch(0.60 0.22 25)",
+                        color: "white",
+                      }}
+                    >
+                      {withdraw.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        "Request Withdrawal"
+                      )}
+                    </Button>
+                  </div>
+                )}
 
                 {/* Withdrawal history */}
                 <div>

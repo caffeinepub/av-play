@@ -19,7 +19,6 @@ import {
   useApproveDeposit,
   useClearManualOverride,
   useGameState,
-  useIsAdmin,
   useMarkWithdrawalProcessed,
   usePaymentMethod,
   useSetManualResult,
@@ -153,7 +152,6 @@ export function AdminPage() {
 }
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const isAdmin = useIsAdmin();
   const gameState = useGameState();
   const holdings = useAllUserHoldings();
   const logs = useAdminLogs();
@@ -178,30 +176,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [newQrUrl, setNewQrUrl] = useState("");
 
   const gs = gameState.data;
-
-  if (isAdmin.isLoading) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        data-ocid="admin.loading_state"
-      >
-        <Loader2 className="w-6 h-6 animate-spin text-neon-green" />
-      </div>
-    );
-  }
-
-  if (!isAdmin.data) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">Access denied. Admin only.</p>
-        <Link to="/">
-          <Button variant="outline" data-ocid="admin.back.button">
-            ← Back
-          </Button>
-        </Link>
-      </div>
-    );
-  }
 
   const handleToggleAutoResolve = async () => {
     try {

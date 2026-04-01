@@ -17,10 +17,11 @@ import { WalletPanel } from "../components/WalletPanel";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useGameState, useUserProfile } from "../hooks/useQueries";
-import { getPhaseTimeRemaining } from "../utils/gameUtils";
+import {
+  getPhaseFromTimeRemaining,
+  getUnifiedTimeRemaining,
+} from "../utils/gameUtils";
 import { playLoseSound, playWinChime } from "../utils/sound";
-
-const ADMIN_AUTH_KEY = "av_admin_auth";
 
 export function TradingPage() {
   const { clear, identity } = useInternetIdentity();
@@ -28,17 +29,16 @@ export function TradingPage() {
   const gameState = useGameState();
   const userProfile = useUserProfile();
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState(45);
+  const [timeRemaining, setTimeRemaining] = useState(() =>
+    getUnifiedTimeRemaining(),
+  );
   const [profileOpen, setProfileOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const prevRoundIdRef = useRef<bigint | null>(null);
-  const registeredRef = useRef(false);
 
-  const isAdminAuthenticated = localStorage.getItem(ADMIN_AUTH_KEY) === "1";
-
+  // Re-register access control after actor is ready (belt-and-suspenders)
   useEffect(() => {
-    if (!actor || registeredRef.current) return;
-    registeredRef.current = true;
+    if (!actor) return;
     actor
       ._initializeAccessControlWithSecret(
         import.meta.env.VITE_CAFFEINE_ADMIN_TOKEN ?? "",
@@ -46,20 +46,23 @@ export function TradingPage() {
       .catch(() => {});
   }, [actor]);
 
+  // Wall-clock based countdown - all users see the same timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeRemaining(getUnifiedTimeRemaining());
+    }, 200);
+    return () => clearInterval(interval);
+  }, []);
+
   const gs = gameState.data;
   const profile = userProfile.data ?? null;
-  const phase = gs?.phase ?? "betting";
+
+  // Derive phase from timer, not from backend
+  const phase = getPhaseFromTimeRemaining(timeRemaining);
+
   const multipliers = gs?.multipliers ?? { red: 2, green: 2, violet: 4.5 };
   const roundHistory = gs?.roundHistory ?? [];
   const currentRoundId = gs?.currentRoundId ?? 0n;
-
-  useEffect(() => {
-    if (!gs) return;
-    const interval = setInterval(() => {
-      setTimeRemaining(getPhaseTimeRemaining(gs.phase, gs.phaseStartTimestamp));
-    }, 200);
-    return () => clearInterval(interval);
-  }, [gs]);
 
   useEffect(() => {
     if (!gs || !profile) return;
@@ -107,6 +110,7 @@ export function TradingPage() {
     violet: currentRound?.totalVioletBets ?? 0n,
   };
 
+  // Show result during reveal phase
   const revealResult =
     phase === "reveal"
       ? roundHistory.find((r) => r.roundId === currentRoundId)?.result
@@ -146,18 +150,16 @@ export function TradingPage() {
           </nav>
 
           <div className="flex items-center gap-2">
-            {isAdminAuthenticated && (
-              <Link to="/admin">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-ocid="nav.admin.link"
-                  className="text-xs border-neon-violet/40 text-neon-violet h-7"
-                >
-                  <Settings className="w-3 h-3 mr-1" /> Admin
-                </Button>
-              </Link>
-            )}
+            <Link to="/admin">
+              <Button
+                size="sm"
+                variant="outline"
+                data-ocid="nav.admin.link"
+                className="text-xs border-neon-violet/40 text-neon-violet h-7"
+              >
+                <Settings className="w-3 h-3 mr-1" /> Admin
+              </Button>
+            </Link>
             <Badge
               variant="outline"
               className="text-xs border-border/50 text-muted-foreground hidden sm:flex"
@@ -209,13 +211,19 @@ export function TradingPage() {
                       <div
                         className={`text-sm font-bold capitalize ${
                           phase === "betting"
-                            ? "text-neon-green"
+                            ? timeRemaining > 10
+                              ? "text-neon-green"
+                              : "text-yellow-400"
                             : phase === "reveal"
                               ? "text-neon-violet"
                               : "text-neon-blue"
                         }`}
                       >
-                        {phase}
+                        {timeRemaining > 10
+                          ? "Betting Open"
+                          : phase === "reveal"
+                            ? "Result"
+                            : "Closed"}
                       </div>
                     </div>
                   </div>
@@ -240,7 +248,13 @@ export function TradingPage() {
                               : revealResult === "green"
                                 ? "#33F5A4"
                                 : "#B455FF",
-                          textShadow: `0 0 20px ${revealResult === "red" ? "#FF4A4A" : revealResult === "green" ? "#33F5A4" : "#B455FF"}99`,
+                          textShadow: `0 0 20px ${
+                            revealResult === "red"
+                              ? "#FF4A4A"
+                              : revealResult === "green"
+                                ? "#33F5A4"
+                                : "#B455FF"
+                          }99`,
                         }}
                       >
                         {revealResult} wins!
@@ -265,10 +279,13 @@ export function TradingPage() {
                     isSelected={selectedColor === color}
                     isWinner={revealResult === color}
                     isReveal={phase === "reveal"}
-                    disabled={phase !== "betting" || alreadyBet}
+                    disabled={
+                      phase !== "betting" || alreadyBet || timeRemaining <= 10
+                    }
                     onClick={() =>
                       phase === "betting" &&
                       !alreadyBet &&
+                      timeRemaining > 10 &&
                       setSelectedColor(color)
                     }
                   />
@@ -280,6 +297,7 @@ export function TradingPage() {
                 selectedColor={selectedColor}
                 userCoins={profile?.coins ?? 0n}
                 alreadyBet={alreadyBet}
+                timeRemaining={timeRemaining}
               />
 
               <RoundHistory rounds={roundHistory} />
@@ -322,7 +340,6 @@ export function TradingPage() {
                   className="w-5 h-5"
                   style={{ color: "oklch(0.68 0.25 300)" }}
                 />
-                {/* Dot indicator if can claim */}
                 {profile &&
                   (() => {
                     const lastMs = Number(profile.lastBonusTime) / 1_000_000;

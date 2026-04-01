@@ -9,9 +9,33 @@ export function getPhaseTimeRemaining(
   phaseStartTimestampNs: bigint,
 ): number {
   const phaseStartMs = Number(phaseStartTimestampNs) / 1_000_000;
-  const elapsed = (Date.now() - phaseStartMs) / 1000; // seconds
+  const elapsed = (Date.now() - phaseStartMs) / 1000;
   const duration = PHASE_DURATIONS[phase as keyof typeof PHASE_DURATIONS] ?? 50;
   return Math.max(0, duration - elapsed);
+}
+
+/**
+ * Returns a unified 0-60 countdown based on wall-clock time.
+ * All users see the same countdown synced to real time.
+ * 60 = start of round, 0 = end of round.
+ * Betting is open when timeRemaining > 10.
+ */
+export function getUnifiedTimeRemaining(): number {
+  const CYCLE_MS = 60 * 1000;
+  const positionInCycle = Date.now() % CYCLE_MS; // 0..59999 ms
+  const elapsedSeconds = positionInCycle / 1000;
+  return 60 - elapsedSeconds; // counts from 60 down to ~0
+}
+
+/**
+ * Derives the current game phase from the unified time remaining.
+ */
+export function getPhaseFromTimeRemaining(
+  timeRemaining: number,
+): "betting" | "reveal" | "cooldown" {
+  if (timeRemaining > 10) return "betting";
+  if (timeRemaining > 5) return "reveal";
+  return "cooldown";
 }
 
 export function getColorConfig(color: string) {

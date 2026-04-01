@@ -13,10 +13,7 @@ export function CountdownRing({
   phase,
   totalDuration,
 }: CountdownRingProps) {
-  const duration =
-    totalDuration ??
-    PHASE_DURATIONS[phase as keyof typeof PHASE_DURATIONS] ??
-    45;
+  const duration = totalDuration ?? 60;
   const progress = Math.max(0, Math.min(1, timeRemaining / duration));
   const size = 200;
   const strokeWidth = 12;
@@ -26,7 +23,7 @@ export function CountdownRing({
   const prevTimeRef = useRef(timeRemaining);
 
   useEffect(() => {
-    if (phase === "betting" && timeRemaining <= 5 && timeRemaining > 0) {
+    if (timeRemaining <= 10 && timeRemaining > 0) {
       const prev = Math.ceil(prevTimeRef.current);
       const curr = Math.ceil(timeRemaining);
       if (prev !== curr) {
@@ -34,12 +31,12 @@ export function CountdownRing({
       }
     }
     prevTimeRef.current = timeRemaining;
-  }, [timeRemaining, phase]);
+  }, [timeRemaining]);
 
   const getPhaseLabel = () => {
-    if (phase === "betting") return "BETTING";
-    if (phase === "reveal") return "REVEAL";
-    return "COOLDOWN";
+    if (timeRemaining > 10) return "BETTING OPEN";
+    if (timeRemaining > 0) return "BETTING CLOSED";
+    return "NEXT ROUND";
   };
 
   const getPhaseColor = () => {
@@ -54,7 +51,7 @@ export function CountdownRing({
     return "#B455FF";
   };
 
-  const isUrgent = phase === "betting" && timeRemaining <= 5;
+  const isUrgent = timeRemaining <= 10;
 
   return (
     <div

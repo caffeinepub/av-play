@@ -14,6 +14,7 @@ interface BetPanelProps {
   selectedColor: string | null;
   userCoins: bigint;
   alreadyBet: boolean;
+  timeRemaining: number;
 }
 
 export function BetPanel({
@@ -21,20 +22,37 @@ export function BetPanel({
   selectedColor,
   userCoins,
   alreadyBet,
+  timeRemaining,
 }: BetPanelProps) {
   const [amount, setAmount] = useState<number>(50);
   const [customAmount, setCustomAmount] = useState("");
+  const [betMode, setBetMode] = useState<"color" | "size">("color");
+  const [selectedSize, setSelectedSize] = useState<"big" | "small" | null>(
+    null,
+  );
   const placeBet = usePlaceBet();
-  const isBetting = phase === "betting";
-  const canBet = isBetting && !!selectedColor && !alreadyBet;
-  const cfg = selectedColor ? getColorConfig(selectedColor) : null;
+  const isBetting = phase === "betting" && timeRemaining > 10;
+  const bettingClosed = phase === "betting" && timeRemaining <= 10;
+
+  // In color mode use selectedColor; in size mode use selectedSize mapped to color
+  const effectiveColor =
+    betMode === "color"
+      ? selectedColor
+      : selectedSize === "big"
+        ? "green"
+        : selectedSize === "small"
+          ? "red"
+          : null;
+  const canBet = isBetting && !!effectiveColor && !alreadyBet;
+  const cfg =
+    betMode === "color" && selectedColor ? getColorConfig(selectedColor) : null;
 
   const effectiveAmount = customAmount
     ? Number.parseInt(customAmount, 10)
     : amount;
 
   const handlePlaceBet = async () => {
-    if (!canBet || !selectedColor) return;
+    if (!canBet || !effectiveColor) return;
     const betAmount = BigInt(effectiveAmount);
     if (betAmount <= 0n || betAmount > userCoins) {
       toast.error(
@@ -43,36 +61,177 @@ export function BetPanel({
       return;
     }
     try {
-      await placeBet.mutateAsync({ color: selectedColor, amount: betAmount });
+      await placeBet.mutateAsync({ color: effectiveColor, amount: betAmount });
       playBetPlaced();
-      toast.success(
-        `Bet placed: ${effectiveAmount} coins on ${selectedColor}!`,
-      );
+      const label =
+        betMode === "size"
+          ? selectedSize === "big"
+            ? "BIG"
+            : "SMALL"
+          : effectiveColor.toUpperCase();
+      toast.success(`Bet placed: ${effectiveAmount} coins on ${label}!`);
       setCustomAmount("");
     } catch (e: any) {
       toast.error(e?.message || "Failed to place bet");
     }
   };
 
+  const betLabel =
+    betMode === "size"
+      ? selectedSize
+        ? `BET ${effectiveAmount} COINS ON ${selectedSize.toUpperCase()}`
+        : "← Select BIG or SMALL"
+      : selectedColor
+        ? `BET ${effectiveAmount} COINS ON ${selectedColor.toUpperCase()}`
+        : "← Select a color first";
+
   return (
     <div
       className="card-surface rounded-xl p-4 space-y-4"
       data-ocid="bet.panel"
     >
+      {/* Mode toggle */}
+      <div
+        className="flex gap-1 p-1 rounded-xl"
+        style={{ background: "oklch(0.14 0.02 240 / 0.8)" }}
+      >
+        {(["color", "size"] as const).map((mode) => (
+          <button
+            type="button"
+            key={mode}
+            onClick={() => setBetMode(mode)}
+            className="flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all"
+            style={{
+              background:
+                betMode === mode ? "oklch(0.85 0.2 168 / 0.18)" : "transparent",
+              border:
+                betMode === mode
+                  ? "1px solid oklch(0.85 0.2 168 / 0.5)"
+                  : "1px solid transparent",
+              color:
+                betMode === mode
+                  ? "oklch(0.85 0.2 168)"
+                  : "oklch(0.55 0.02 240)",
+            }}
+            data-ocid={`bet.mode_${mode}.toggle`}
+          >
+            {mode === "color" ? "🎨 Color" : "📐 Size"}
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
           Place Bet
         </h3>
-        {selectedColor && cfg && (
+        {betMode === "color" && selectedColor && cfg && (
           <span
             className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}
           >
             {cfg.label} selected
           </span>
         )}
+        {betMode === "size" && selectedSize && (
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full border"
+            style={{
+              background:
+                selectedSize === "big"
+                  ? "oklch(0.72 0.18 220 / 0.15)"
+                  : "oklch(0.72 0.22 50 / 0.15)",
+              borderColor:
+                selectedSize === "big"
+                  ? "oklch(0.72 0.18 220 / 0.5)"
+                  : "oklch(0.72 0.22 50 / 0.5)",
+              color:
+                selectedSize === "big"
+                  ? "oklch(0.72 0.18 220)"
+                  : "oklch(0.72 0.22 50)",
+            }}
+          >
+            {selectedSize === "big" ? "BIG" : "SMALL"} selected
+          </span>
+        )}
       </div>
 
-      {!isBetting && (
+      {/* Size selector buttons */}
+      {betMode === "size" && isBetting && !alreadyBet && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setSelectedSize("big")}
+            data-ocid="bet.big.button"
+            className="py-4 rounded-xl font-black text-base uppercase tracking-wider transition-all"
+            style={{
+              background:
+                selectedSize === "big"
+                  ? "oklch(0.72 0.18 220 / 0.25)"
+                  : "oklch(0.72 0.18 220 / 0.08)",
+              border:
+                selectedSize === "big"
+                  ? "2px solid oklch(0.72 0.18 220 / 0.8)"
+                  : "1px solid oklch(0.72 0.18 220 / 0.3)",
+              color: "oklch(0.72 0.18 220)",
+              boxShadow:
+                selectedSize === "big"
+                  ? "0 0 20px oklch(0.72 0.18 220 / 0.3)"
+                  : "none",
+            }}
+          >
+            <div className="text-2xl mb-0.5">⬆️</div>
+            BIG
+            <div className="text-[10px] font-normal opacity-70 mt-0.5">
+              2× payout
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSize("small")}
+            data-ocid="bet.small.button"
+            className="py-4 rounded-xl font-black text-base uppercase tracking-wider transition-all"
+            style={{
+              background:
+                selectedSize === "small"
+                  ? "oklch(0.72 0.22 50 / 0.25)"
+                  : "oklch(0.72 0.22 50 / 0.08)",
+              border:
+                selectedSize === "small"
+                  ? "2px solid oklch(0.72 0.22 50 / 0.8)"
+                  : "1px solid oklch(0.72 0.22 50 / 0.3)",
+              color: "oklch(0.72 0.22 50)",
+              boxShadow:
+                selectedSize === "small"
+                  ? "0 0 20px oklch(0.72 0.22 50 / 0.3)"
+                  : "none",
+            }}
+          >
+            <div className="text-2xl mb-0.5">⬇️</div>
+            SMALL
+            <div className="text-[10px] font-normal opacity-70 mt-0.5">
+              2× payout
+            </div>
+          </button>
+        </div>
+      )}
+
+      {bettingClosed && (
+        <div
+          className="flex items-center justify-center py-3 rounded-lg border"
+          style={{
+            background: "oklch(0.60 0.22 25 / 0.1)",
+            border: "1px solid oklch(0.60 0.22 25 / 0.4)",
+          }}
+          data-ocid="bet.closed.error_state"
+        >
+          <span
+            className="text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "oklch(0.70 0.18 25)" }}
+          >
+            🔒 Betting closed — last 10 seconds
+          </span>
+        </div>
+      )}
+      {!isBetting && !bettingClosed && (
         <div
           className="flex items-center justify-center py-3 rounded-lg bg-muted/30 border border-border/40"
           data-ocid="bet.closed.error_state"
@@ -156,10 +315,8 @@ export function BetPanel({
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Placing Bet...
               </>
-            ) : !selectedColor ? (
-              "← Select a color first"
             ) : (
-              `BET ${effectiveAmount} COINS ON ${selectedColor.toUpperCase()}`
+              betLabel
             )}
           </Button>
         </>
