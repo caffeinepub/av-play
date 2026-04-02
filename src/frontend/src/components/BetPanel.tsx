@@ -15,6 +15,7 @@ interface BetPanelProps {
   userCoins: bigint;
   alreadyBet: boolean;
   timeRemaining: number;
+  onBetPlaced?: (color: string, amount: number, mode: "color" | "size") => void;
 }
 
 export function BetPanel({
@@ -23,6 +24,7 @@ export function BetPanel({
   userCoins,
   alreadyBet,
   timeRemaining,
+  onBetPlaced,
 }: BetPanelProps) {
   const [amount, setAmount] = useState<number>(50);
   const [customAmount, setCustomAmount] = useState("");
@@ -70,6 +72,7 @@ export function BetPanel({
             : "SMALL"
           : effectiveColor.toUpperCase();
       toast.success(`Bet placed: ${effectiveAmount} coins on ${label}!`);
+      onBetPlaced?.(effectiveColor, effectiveAmount, betMode);
       setCustomAmount("");
     } catch (e: any) {
       toast.error(e?.message || "Failed to place bet");

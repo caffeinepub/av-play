@@ -396,11 +396,6 @@ actor {
         if (existingUser.coins < amount) { Runtime.trap("Insufficient coins for bet") };
         if (amount > betLimit) { Runtime.trap("Bet exceeds max allowed") };
 
-        // Wall-clock based phase check: same 60s cycle as frontend
-        let cycleNs : Int = 60 * 1_000_000_000;
-        let betPhaseNs : Int = betPhaseSeconds * 1_000_000_000;
-        let posInCycle : Int = Time.now() % cycleNs;
-        if (posInCycle > betPhaseNs) { Runtime.trap("Betting phase has ended — wait for next round") };
 
         let bet : Bet = {
           betColor = color;

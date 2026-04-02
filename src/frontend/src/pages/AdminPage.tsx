@@ -10,6 +10,7 @@ import { ArrowLeft, Loader2, Lock, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 import {
   useAdjustUserCoins,
   useAdminLogs,
@@ -163,6 +164,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const clearOverride = useClearManualOverride();
   const setMultipliers = useSetMultipliers();
   const adjustCoins = useAdjustUserCoins();
+  const { actor } = useActor();
   const markProcessed = useMarkWithdrawalProcessed();
   const approveDeposit = useApproveDeposit();
   const setPaymentMethod = useSetPaymentMethod();
@@ -227,15 +229,30 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
     try {
       const principal = Principal.fromText(adjustUser);
-      await adjustCoins.mutateAsync({
-        user: principal,
-        amount: BigInt(adjustAmt),
-      });
-      toast.success("Coins adjusted");
+      const raw = adjustAmt.trim();
+      let amount: bigint;
+
+      if (raw.startsWith("+")) {
+        // Add the specific amount
+        amount = BigInt(raw.slice(1));
+      } else if (raw.startsWith("-")) {
+        // Deduct the specific amount
+        amount = -BigInt(raw.slice(1));
+      } else {
+        // No sign — set balance directly to this amount
+        if (!actor) throw new Error("Not connected");
+        const profile = await actor.getUserProfile(principal);
+        const currentCoins = profile ? BigInt(profile.coins) : 0n;
+        const target = BigInt(raw);
+        amount = target - currentCoins;
+      }
+
+      await adjustCoins.mutateAsync({ user: principal, amount });
+      toast.success("Coins updated successfully");
       setAdjustUser("");
       setAdjustAmt("");
     } catch (e: any) {
-      toast.error(e?.message || "Invalid principal");
+      toast.error(e?.message || "Invalid input");
     }
   };
 
@@ -675,7 +692,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     className="bg-muted/30 border-border/40 text-sm flex-1"
                   />
                   <Input
-                    placeholder="Amount (+/-)"
+                    placeholder="+add / -deduct / set"
                     value={adjustAmt}
                     onChange={(e) => setAdjustAmt(e.target.value)}
                     data-ocid="admin.adjust_amount.input"

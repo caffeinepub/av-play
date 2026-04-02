@@ -34,18 +34,43 @@ export function getRoundNumber(): number {
 }
 
 /**
+ * Wang hash — produces well-distributed, non-sequential output.
+ */
+function wangHash(n: number): number {
+  let h = n >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  return h;
+}
+
+/**
  * Deterministic result for a given round number.
  * All users get the same result for the same round.
+ * Results are random-looking (not sequential) due to Wang hash.
  */
 export function getResultForRound(roundId: number): {
   color: "red" | "green" | "violet";
   size: "BIG" | "SMALL";
 } {
-  const h = (roundId * 1664525 + 1013904223) >>> 0;
-  const colorIdx = h % 3;
-  const sizeIdx = (h >> 2) % 2;
-  const color = (["red", "green", "violet"] as const)[colorIdx];
+  const h = wangHash(roundId);
+  const h2 = wangHash(roundId ^ 0xdeadbeef);
+  const sizeIdx = h2 % 2;
   const size = (["BIG", "SMALL"] as const)[sizeIdx];
+
+  // Violet appears ~1 in 30 rounds (3.3%), red and green share the rest equally.
+  // Weighted pool of 60: 29 red, 29 green, 2 violet.
+  const POOL = 60;
+  const slot = h % POOL;
+  let color: "red" | "green" | "violet";
+  if (slot < 29) {
+    color = "red";
+  } else if (slot < 58) {
+    color = "green";
+  } else {
+    color = "violet";
+  }
+
   return { color, size };
 }
 

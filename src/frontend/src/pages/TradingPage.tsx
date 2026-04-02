@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Home, LogOut, Settings, User, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { ActivitySheet } from "../components/ActivitySheet";
 import { BetPanel } from "../components/BetPanel";
 import { ColorCard } from "../components/ColorCard";
+import { Confetti } from "../components/Confetti";
 import { CountdownRing } from "../components/CountdownRing";
 import { LiveTicker } from "../components/LiveTicker";
 import { ProfileSheet } from "../components/ProfileSheet";
@@ -24,9 +26,23 @@ import {
 } from "../utils/gameUtils";
 import { playLoseSound, playWinChime } from "../utils/sound";
 
+type PendingBet = {
+  roundId: number;
+  color: string;
+  amount: number;
+  mode: "color" | "size";
+};
+
+type WinPopup = {
+  amount: number;
+  multiplier: number;
+  color: string;
+};
+
 export function TradingPage() {
   const { clear, identity } = useInternetIdentity();
   const { actor } = useActor();
+  const queryClient = useQueryClient();
   const gameState = useGameState();
   const userProfile = useUserProfile();
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
@@ -36,7 +52,10 @@ export function TradingPage() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [roundHistory, setRoundHistory] = useState<HistoryEntry[]>([]);
+  const [winPopup, setWinPopup] = useState<WinPopup | null>(null);
   const prevRoundIdRef = useRef<number | null>(null);
+  const pendingBetRef = useRef<PendingBet | null>(null);
+  const [pendingBet, setPendingBet] = useState<PendingBet | null>(null);
 
   // Re-register access control after actor is ready
   useEffect(() => {
@@ -73,11 +92,47 @@ export function TradingPage() {
           ].slice(0, 30);
         });
         setSelectedColor(null);
+
+        // Win/loss detection using ref (fresh inside closure)
+        const bet = pendingBetRef.current;
+        if (bet && bet.roundId === prevRound) {
+          let won = false;
+          let multiplier = 0;
+          if (bet.mode === "size") {
+            const betSize = bet.color === "green" ? "BIG" : "SMALL";
+            won = betSize === result.size;
+            multiplier = 2;
+          } else {
+            won = bet.color === result.color;
+            multiplier = bet.color === "violet" ? 4.5 : 2;
+          }
+          const winAmount = Math.floor(bet.amount * multiplier);
+          if (won) {
+            actor
+              ?.depositCoins(BigInt(winAmount))
+              .then(() => {
+                queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+              })
+              .catch(() => {});
+            playWinChime();
+            toast.success(`🎉 You WON! +${winAmount} coins (${multiplier}x)`);
+            setWinPopup({ amount: winAmount, multiplier, color: bet.color });
+            setTimeout(() => setWinPopup(null), 3000);
+          } else {
+            playLoseSound();
+            toast.error(
+              `😞 You lost. Result was ${result.color.toUpperCase()} / ${result.size}`,
+            );
+          }
+          pendingBetRef.current = null;
+          setPendingBet(null);
+        }
       }
       prevRoundIdRef.current = currentRound;
     }, 200);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actor, queryClient]);
 
   const gs = gameState.data;
   const profile = userProfile.data ?? null;
@@ -88,35 +143,6 @@ export function TradingPage() {
   const backendRoundHistory = gs?.roundHistory ?? [];
   const currentRoundId = getRoundNumber();
   const currentResult = getResultForRound(currentRoundId);
-
-  // Win/loss toast based on backend data
-  const prevBigintRef = useRef<bigint | null>(null);
-  useEffect(() => {
-    if (!gs || !profile) return;
-    const { currentRoundId: rid, roundHistory: rh } = gs;
-    if (prevBigintRef.current !== null && prevBigintRef.current !== rid) {
-      const prevRound = rh.find((r) => r.roundId === prevBigintRef.current);
-      if (prevRound?.result) {
-        const userBet = prevRound.bets.find(
-          (b) => b[0].toString() === identity?.getPrincipal().toString(),
-        );
-        if (userBet) {
-          if (userBet[1].betColor === prevRound.result) {
-            playWinChime();
-            toast.success(
-              `\uD83C\uDF89 You WON! Bet on ${prevRound.result.toUpperCase()}`,
-            );
-          } else {
-            playLoseSound();
-            toast.error(
-              `\uD83D\uDE1E You lost. Result was ${prevRound.result.toUpperCase()}`,
-            );
-          }
-        }
-      }
-    }
-    prevBigintRef.current = rid;
-  }, [gs, profile, identity]);
 
   const alreadyBet =
     profile?.betHistory?.some(() => {
@@ -148,6 +174,12 @@ export function TradingPage() {
   const sizeColor = (s: "BIG" | "SMALL") =>
     s === "BIG" ? "#4AA8FF" : "#FF8C42";
   const sizeEmoji = (s: "BIG" | "SMALL") => (s === "BIG" ? "⬆️" : "⬇️");
+
+  const winColorHex = (c: string) =>
+    c === "red" ? "#FF4A4A" : c === "green" ? "#33F5A4" : "#B455FF";
+
+  // Suppress unused warning — pendingBet state used to trigger re-render when needed
+  void pendingBet;
 
   return (
     <div className="min-h-screen flex flex-col pb-24">
@@ -334,12 +366,136 @@ export function TradingPage() {
               userCoins={profile?.coins ?? 0n}
               alreadyBet={alreadyBet}
               timeRemaining={timeRemaining}
+              onBetPlaced={(color, amount, mode) => {
+                const bet = { roundId: getRoundNumber(), color, amount, mode };
+                pendingBetRef.current = bet;
+                setPendingBet(bet);
+              }}
             />
 
             <RoundHistory history={roundHistory} />
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* Confetti */}
+      <Confetti
+        active={!!winPopup}
+        accentColor={winPopup ? winColorHex(winPopup.color) : "#FFD700"}
+      />
+
+      {/* Win Popup Overlay */}
+      <AnimatePresence>
+        {winPopup && (
+          <motion.div
+            key="win-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 flex items-center justify-center"
+            style={{
+              zIndex: 200,
+              background: "rgba(0,0,0,0.75)",
+              backdropFilter: "blur(6px)",
+            }}
+            onClick={() => setWinPopup(null)}
+            data-ocid="win.modal"
+          >
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 1.1, opacity: 0 }}
+              transition={{
+                type: "spring",
+                stiffness: 320,
+                damping: 22,
+                delay: 0.05,
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative flex flex-col items-center gap-4 rounded-3xl px-10 py-10 mx-6"
+              style={{
+                background: "oklch(0.09 0.025 260)",
+                border: `2px solid ${winColorHex(winPopup.color)}`,
+                boxShadow: `0 0 40px ${winColorHex(winPopup.color)}66, 0 0 80px ${winColorHex(winPopup.color)}33, inset 0 0 30px ${winColorHex(winPopup.color)}11`,
+                minWidth: 280,
+                maxWidth: 360,
+              }}
+            >
+              {/* Sparkle ring */}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{
+                  duration: 6,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "linear",
+                }}
+                className="absolute inset-0 rounded-3xl pointer-events-none"
+                style={{
+                  background: `conic-gradient(from 0deg, transparent 70%, ${winColorHex(winPopup.color)}55 85%, transparent 100%)`,
+                }}
+              />
+
+              {/* Trophy emoji */}
+              <motion.div
+                animate={{ scale: [1, 1.15, 1], rotate: [-8, 8, -8, 0] }}
+                transition={{ duration: 0.6, ease: "easeInOut" }}
+                className="text-7xl select-none"
+              >
+                🏆
+              </motion.div>
+
+              {/* YOU WON text */}
+              <div
+                className="text-4xl font-black tracking-wider uppercase"
+                style={{
+                  color: winColorHex(winPopup.color),
+                  textShadow: `0 0 20px ${winColorHex(winPopup.color)}cc, 0 0 40px ${winColorHex(winPopup.color)}66`,
+                }}
+              >
+                YOU WON!
+              </div>
+
+              {/* Win amount */}
+              <motion.div
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-2xl font-bold text-white"
+              >
+                +{winPopup.amount}{" "}
+                <span className="text-yellow-400">COINS</span>
+              </motion.div>
+
+              {/* Multiplier badge */}
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 18,
+                  delay: 0.3,
+                }}
+                className="px-5 py-2 rounded-full text-base font-black"
+                style={{
+                  background: `${winColorHex(winPopup.color)}22`,
+                  color: winColorHex(winPopup.color),
+                  border: `1.5px solid ${winColorHex(winPopup.color)}88`,
+                  boxShadow: `0 0 16px ${winColorHex(winPopup.color)}44`,
+                }}
+              >
+                {winPopup.multiplier}x MULTIPLIER
+              </motion.div>
+
+              {/* Tap to dismiss */}
+              <p className="text-xs text-muted-foreground mt-2">
+                Tap anywhere to dismiss
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="fixed bottom-0 left-0 right-0 z-50">
         <LiveTicker />
