@@ -57,6 +57,19 @@ export function TradingPage() {
   const pendingBetRef = useRef<PendingBet | null>(null);
   const [pendingBet, setPendingBet] = useState<PendingBet | null>(null);
 
+  // Keep live multipliers in a ref so the interval closure always has fresh values
+  const multipliersRef = useRef({ red: 2, green: 2, violet: 4.5 });
+
+  const gs = gameState.data;
+  const profile = userProfile.data ?? null;
+
+  // Sync multipliersRef whenever game state updates
+  useEffect(() => {
+    if (gs?.multipliers) {
+      multipliersRef.current = gs.multipliers;
+    }
+  }, [gs?.multipliers]);
+
   // Re-register access control after actor is ready
   useEffect(() => {
     if (!actor) return;
@@ -101,12 +114,21 @@ export function TradingPage() {
           if (bet.mode === "size") {
             const betSize = bet.color === "green" ? "BIG" : "SMALL";
             won = betSize === result.size;
+            // BIG/SMALL always 2x (no separate multiplier config)
             multiplier = 2;
           } else {
             won = bet.color === result.color;
-            multiplier = bet.color === "violet" ? 4.5 : 2;
+            // Use live multipliers from ref — never hardcoded
+            const m = multipliersRef.current;
+            multiplier =
+              bet.color === "violet"
+                ? m.violet
+                : bet.color === "green"
+                  ? m.green
+                  : m.red;
           }
-          const winAmount = Math.floor(bet.amount * multiplier);
+          // Math.round avoids truncation of fractional payouts (e.g. 11 × 4.5 = 49.5 → 50)
+          const winAmount = Math.round(bet.amount * multiplier);
           if (won) {
             actor
               ?.depositCoins(BigInt(winAmount))
@@ -129,13 +151,10 @@ export function TradingPage() {
         }
       }
       prevRoundIdRef.current = currentRound;
-    }, 200);
+    }, 1000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actor, queryClient]);
-
-  const gs = gameState.data;
-  const profile = userProfile.data ?? null;
 
   const phase = getPhaseFromTimeRemaining(timeRemaining);
 

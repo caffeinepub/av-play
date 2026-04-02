@@ -17,12 +17,12 @@ export function getPhaseTimeRemaining(
 /**
  * Returns a unified 0-60 countdown based on wall-clock time.
  * All users see the same countdown synced to real time.
+ * Uses integer seconds so all users show the exact same value.
  */
 export function getUnifiedTimeRemaining(): number {
-  const CYCLE_MS = 60 * 1000;
-  const positionInCycle = Date.now() % CYCLE_MS;
-  const elapsedSeconds = positionInCycle / 1000;
-  return 60 - elapsedSeconds;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const positionInCycle = nowSeconds % 60;
+  return 60 - positionInCycle;
 }
 
 /**
