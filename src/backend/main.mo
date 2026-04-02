@@ -16,11 +16,9 @@ import AccessControl "authorization/access-control";
 actor {
   // CONSTANTS
   let startingCoins = 100;
-  let betLimit = 100;
+  let betLimit = 100_000;
   let roundTimeSeconds = 60;
   let betPhaseSeconds = 50;
-  let revealPhaseSeconds = 5;
-  let cooldownPhaseSeconds = 5;
   let dailyBonusCooldown = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
 
   // Types
@@ -86,7 +84,7 @@ actor {
     qrImageUrl : Text;
   };
 
-  // Conversion function to immutable, returned in query functions
+  // Conversion function
   func roundToView(round : Round) : RoundView {
     {
       roundId = round.roundId;
@@ -129,21 +127,16 @@ actor {
     violet : Float;
   };
 
-  type SystemState = {
-    autoResolve : Bool;
-    manualResultOverride : ?Text;
-    currentRound : Round;
-    roundCount : Nat;
-    multipliers : MultiplierConfig;
-    lastTwentyRounds : List.List<Round>;
-  };
-
   // State
   let userState = Map.empty<Principal, User>();
-  let withdrawalRequestsState = Map.empty<Principal, List.List<WithdrawalRequest>>();
+  // Legacy stable variables kept for upgrade compatibility (do not remove)
   let bettingPhaseRounds = Map.empty<Nat, Round>();
   let revealPhaseRoundsState = Map.empty<Nat, Round>();
   let cooldownPhaseRounds = Map.empty<Nat, Round>();
+  let revealPhaseSeconds : Nat = 5;
+  let cooldownPhaseSeconds : Nat = 5;
+  let initialMultipliers = { red = 2.0 : Float; green = 2.0 : Float; violet = 4.5 : Float };
+  let withdrawalRequestsState = Map.empty<Principal, List.List<WithdrawalRequest>>();
   let completedRounds = Map.empty<Nat, Round>();
   let adminLogs = List.empty<Text>();
 
@@ -155,7 +148,7 @@ actor {
   var paymentUpiId : Text = "6205006521@okbizaxis";
   var paymentQrImageUrl : Text = "/assets/fd4426e3-53eb-407e-a99a-c7978d669943_image-019d4ab9-3854-716b-93ac-e620b7e024db.png";
 
-  // Authorization
+  // Authorization mixin (required by platform - keep include)
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
@@ -166,14 +159,18 @@ actor {
   var currentPhase : GamePhase = #betting { startTime = Time.now() };
   var currentRoundStartTime : Time.Time = Time.now();
 
-  // Initialize user actor state on new deployment
-  let initialMultipliers : MultiplierConfig = {
-    red = 2.0;
-    green = 2.0;
-    violet = 4.5;
+  var multiplierRed : Float = 2.0;
+  var multiplierGreen : Float = 2.0;
+  var multiplierViolet : Float = 4.5;
+
+  // Helper: require logged-in user (not anonymous)
+  func requireLogin(caller : Principal) {
+    if (caller.isAnonymous()) {
+      Runtime.trap("You must be logged in to perform this action");
+    };
   };
 
-  // Get or create user profile without changing state
+  // Get or create user profile
   func getUserProfileInternal(caller : Principal) : User {
     let defaultUser : User = {
       coins = startingCoins;
@@ -204,67 +201,7 @@ actor {
     total;
   };
 
-  func getNextRoundPhase() : GamePhase {
-    switch (currentPhase) {
-      case (#betting { startTime }) {
-        #reveal { startTime = Time.now(); result = null };
-      };
-      case (#reveal { startTime; result }) {
-        #cooldown { startTime = Time.now() };
-      };
-      case (#cooldown { startTime }) {
-        #betting { startTime = Time.now() };
-      };
-    };
-  };
-
-  // Process round result after time passes (manual or automatic)
-  func processRound(phase : GamePhase, phaseStartTime : Time.Time) {
-    switch (currentPhase, phase) {
-      case (
-        #betting { startTime = previousBetStartTime },
-        #reveal { startTime = revealStartTime; result }
-      ) {
-        let betting = revealStartTime - previousBetStartTime;
-      };
-      case (
-        #reveal { startTime = previousRevealStartTime; result },
-        #cooldown { startTime = cooldownStartTime }
-      ) {
-        processPhaseTransition("reveal", previousRevealStartTime, "cooldown", cooldownStartTime);
-      };
-      case (
-        #cooldown { startTime = previousCooldownStartTime },
-        #betting { startTime = newBettingPhaseStart }
-      ) {
-        processPhaseTransition("cooldown", previousCooldownStartTime, "betting", newBettingPhaseStart);
-      };
-      case (_) {};
-    };
-  };
-
-  func processPhaseTransition(fromPhase : Text, fromTime : Time.Time, toPhase : Text, toTime : Time.Time) {
-    let phaseTransitionStr = "New " # toPhase # " phase started at " # toTime.toText() # ". Previous (from " # fromTime.toText() # ")";
-    adminLogs.add(phaseTransitionStr);
-  };
-
-  // Util for time conversion
-  func getCurrentSeconds() : Nat {
-    ((Time.now() / 1_000_000_000).toNat()) % (60 * 60 * 24);
-  };
-
-  func getPreviousPhase(_timestamp : Time.Time) : GamePhase {
-    func getPreviousPhaseHelper(currentPhase : GamePhase) : GamePhase {
-      switch (currentPhase) {
-        case (#betting(_)) { #cooldown { startTime = Time.now() } };
-        case (#reveal(_)) { #betting { startTime = Time.now() } };
-        case (#cooldown(_)) { #reveal { startTime = Time.now(); result = null } };
-      };
-    };
-    getPreviousPhaseHelper(currentPhase);
-  };
-
-  // Queries - Public (no auth required)
+  // Queries
   public query ({ caller }) func getGameState() : async {
     currentRoundId : Nat;
     phase : Text;
@@ -275,7 +212,6 @@ actor {
     multipliers : MultiplierConfig;
   } {
     let roundHistoryArray = completedRounds.toArray().map(func((_, round)) { roundToView(round) });
-
     let manualResult = if (manualResultMode) { nextManualResult } else { null };
     {
       currentRoundId;
@@ -284,7 +220,7 @@ actor {
       roundHistory = roundHistoryArray;
       autoResolve = autoResolveMode;
       manualResult;
-      multipliers = initialMultipliers;
+      multipliers = { red = multiplierRed; green = multiplierGreen; violet = multiplierViolet };
     };
   };
 
@@ -301,11 +237,9 @@ actor {
     };
   };
 
-  // User profile endpoints (required by frontend)
+  // User profile endpoints
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view profiles");
-    };
+    requireLogin(caller);
     let internalUser = getUserProfileInternal(caller);
     ?{
       coins = internalUser.coins;
@@ -317,9 +251,7 @@ actor {
   };
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile");
-    };
+    requireLogin(caller);
     let internalUser = getUserProfileInternal(user);
     ?{
       coins = internalUser.coins;
@@ -331,10 +263,7 @@ actor {
   };
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
-    };
-    // Convert profile to internal User format
+    requireLogin(caller);
     let newUser : User = {
       coins = profile.coins;
       lastBonusTime = profile.lastBonusTime;
@@ -350,10 +279,10 @@ actor {
   };
 
   public query ({ caller }) func getAllUserHoldings() : async [(Principal, Nat)] {
+    requireLogin(caller);
     userState.toArray().map(func((principal, user)) { (principal, user.coins) }).sort(compareHoldingsByAmount);
   };
 
-  // Current round phase - Public
   public query ({ caller }) func getCurrentRoundPhase() : async Text {
     getPhaseString(currentPhase);
   };
@@ -363,22 +292,18 @@ actor {
     { upiId = paymentUpiId; qrImageUrl = paymentQrImageUrl };
   };
 
-  // Set payment method (admin only)
+  // Set payment method (admin only - frontend handles auth)
   public shared ({ caller }) func setPaymentMethod(upiId : Text, qrImageUrl : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can update payment method");
-    };
+    requireLogin(caller);
     paymentUpiId := upiId;
     paymentQrImageUrl := qrImageUrl;
     adminLogs.add("Admin updated payment method: UPI=" # upiId);
   };
 
-  // Submit deposit request (user) - does NOT credit coins yet
+  // Submit deposit request
   public shared ({ caller }) func submitDepositRequest(amount : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can submit deposit requests");
-    };
-    if (amount <= 0) { Runtime.trap("Must deposit more than 0") };
+    requireLogin(caller);
+    if (amount == 0) { Runtime.trap("Must deposit more than 0") };
 
     let bonusAmount = if (amount >= 100) { 100 } else { 0 };
     let request : DepositRequest = {
@@ -394,19 +319,15 @@ actor {
     adminLogs.add("Deposit request: User " # caller.toText() # " requested " # amount.toText() # " coins");
   };
 
-  // Get all pending deposit requests (admin only)
+  // Get all deposit requests (admin)
   public query ({ caller }) func getAllDepositRequests() : async [DepositRequest] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can view deposit requests");
-    };
+    requireLogin(caller);
     depositRequests.toArray();
   };
 
-  // Approve deposit request (admin only) - credits coins to user
+  // Approve deposit request (admin)
   public shared ({ caller }) func approveDeposit(requestIndex : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can approve deposits");
-    };
+    requireLogin(caller);
 
     let requestsArray = depositRequests.toArray();
     var found = false;
@@ -439,7 +360,7 @@ actor {
     };
     userState.add(approvedUser, newUser);
 
-    // Mark request as approved by rebuilding the list
+    // Mark request as approved
     let updatedRequests = List.empty<DepositRequest>();
     for (req in requestsArray.values()) {
       if (req.index == requestIndex) {
@@ -455,7 +376,6 @@ actor {
         updatedRequests.add(req);
       };
     };
-    // Replace list contents
     depositRequests.clear();
     for (req in updatedRequests.values()) {
       depositRequests.add(req);
@@ -464,49 +384,45 @@ actor {
     adminLogs.add("Admin approved deposit for user " # approvedUser.toText() # ": " # approvedAmount.toText() # " + " # approvedBonus.toText() # " bonus coins");
   };
 
-  // TIME-BASED
-  // Place bet (update, only in betting phase) - USER ONLY
+  // Place bet
   public shared ({ caller }) func placeBet(color : Text, amount : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can place bets");
-    };
+    requireLogin(caller);
 
     switch (currentPhase) {
-      case (#betting { startTime }) {
+      case (#betting { startTime = _ }) {
         let existingUser = getUserProfileInternal(caller);
 
-        // Validation
-        if (amount <= 0) { Runtime.trap("Bet must be greater than 0") };
+        if (amount == 0) { Runtime.trap("Bet must be greater than 0") };
         if (existingUser.coins < amount) { Runtime.trap("Insufficient coins for bet") };
         if (amount > betLimit) { Runtime.trap("Bet exceeds max allowed") };
-        if (Time.now() - startTime > betPhaseSeconds * 1_000_000_000) { Runtime.trap("Betting phase timeout") };
 
-        // Create Bet
+        // Wall-clock based phase check: same 60s cycle as frontend
+        let cycleNs : Int = 60 * 1_000_000_000;
+        let betPhaseNs : Int = betPhaseSeconds * 1_000_000_000;
+        let posInCycle : Int = Time.now() % cycleNs;
+        if (posInCycle > betPhaseNs) { Runtime.trap("Betting phase has ended — wait for next round") };
+
         let bet : Bet = {
           betColor = color;
           betAmount = amount;
           betTime = Time.now();
         };
 
-        // Add to map
-        currentPhase := #betting { startTime };
-        let updatedRound = Round.fromCount(currentRoundId);
-
-        // Update user state (remove coins and track bet)
+        // Update user coins and track bet
+        let newBetHistory = existingUser.betHistory;
+        newBetHistory.add(bet);
         userState.add(
           caller,
           {
             coins = existingUser.coins - amount;
             lastBonusTime = existingUser.lastBonusTime;
-            betHistory = existingUser.betHistory;
+            betHistory = newBetHistory;
             withdrawalRequests = existingUser.withdrawalRequests;
             dailyStreak = existingUser.dailyStreak;
           },
         );
 
-        // Add entry to bet
         adminLogs.add("User " # caller.toText() # ": New bet " # amount.toText() # " coins on " # color);
-        updatedRound.bets.add(caller, bet);
       };
       case (_) {
         Runtime.trap("Bets can only be placed during the betting phase");
@@ -514,23 +430,18 @@ actor {
     };
   };
 
-  // Claim Daily Bonus (100 coins update, 24h cooldown) - USER ONLY
+  // Claim Daily Bonus
   public shared ({ caller }) func claimDailyBonus() : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can claim daily bonus");
-    };
+    requireLogin(caller);
 
     let existingUser = getUserProfileInternal(caller);
 
-    // Validate cooldown
     if (Time.now() - existingUser.lastBonusTime < dailyBonusCooldown) {
       Runtime.trap("Daily bonus available once every 24 hours");
     };
 
     let isStreakUpdate = Time.now() - existingUser.lastBonusTime < 48 * 60 * 60 * 1_000_000_000;
-    let newStreak = if (isStreakUpdate) { Nat.max(existingUser.dailyStreak + 1, 1) } else {
-      1;
-    };
+    let newStreak = if (isStreakUpdate) { Nat.max(existingUser.dailyStreak + 1, 1) } else { 1 };
 
     let newUser = {
       coins = existingUser.coins + 100;
@@ -540,20 +451,15 @@ actor {
       dailyStreak = newStreak;
     };
 
-    // Update or create user
     userState.add(caller, newUser);
     adminLogs.add("User " # caller.toText() # " claimed daily bonus - new total: " # newUser.coins.toText());
   };
 
-  // Deposit coins (simulate only - add coins to balance) - USER ONLY
+  // Deposit coins (direct credit for testing)
   public shared ({ caller }) func depositCoins(amount : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can deposit coins");
-    };
-
-    if (amount <= 0) { Runtime.trap("Must deposit more than 0 coins") };
+    requireLogin(caller);
+    if (amount == 0) { Runtime.trap("Must deposit more than 0 coins") };
     let existingUser = getUserProfileInternal(caller);
-
     let newUser = {
       coins = existingUser.coins + amount;
       lastBonusTime = existingUser.lastBonusTime;
@@ -562,19 +468,17 @@ actor {
       dailyStreak = existingUser.dailyStreak;
     };
     userState.add(caller, newUser);
-    adminLogs.add("Deposit: User " # caller.toText() # " deposited " # amount.toText() # " coins, new total: " # newUser.coins.toText());
+    adminLogs.add("Deposit: User " # caller.toText() # " deposited " # amount.toText() # " coins");
   };
 
-  // Request withdrawal (add request to array) - USER ONLY
+  // Request withdrawal
   public shared ({ caller }) func requestWithdrawal(amount : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can request withdrawals");
-    };
+    requireLogin(caller);
 
     let current = getUserProfileInternal(caller);
     if (current.coins < amount) { Runtime.trap("Insufficient coins for withdrawal") };
+    if (amount == 0) { Runtime.trap("Withdrawal amount must be greater than 0") };
 
-    // Reduce user coins immediately
     let withdrawalRequest : WithdrawalRequest = {
       amount;
       requestTime = Time.now();
@@ -590,93 +494,84 @@ actor {
     };
     userState.add(caller, newUser);
 
-    // Add withdrawal request to user's request list
     switch (withdrawalRequestsState.get(caller)) {
       case (null) {
         let newRequestsList = List.singleton<WithdrawalRequest>(withdrawalRequest);
         withdrawalRequestsState.add(caller, newRequestsList);
       };
       case (?existingRequests) {
-        let reversedRequests = existingRequests.reverse();
-        reversedRequests.add(withdrawalRequest);
-        withdrawalRequestsState.add(caller, reversedRequests.reverse());
+        existingRequests.add(withdrawalRequest);
+        withdrawalRequestsState.add(caller, existingRequests);
       };
     };
     adminLogs.add("Withdrawal request: User " # caller.toText() # " requested " # amount.toText() # " coins");
   };
 
-  // Get withdrawal requests (admin only)
+  // Get withdrawal requests (admin)
   public query ({ caller }) func getAllWithdrawalRequests() : async [(Principal, WithdrawalRequest)] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can view withdrawal requests");
-    };
+    requireLogin(caller);
     let withdrawalRequestsList = List.empty<(Principal, WithdrawalRequest)>();
-
-    // Convert map to persistent array of (Principal, List.List<WithdrawalRequest>)
     let mapArray = withdrawalRequestsState.toArray();
-
-    // Populate persistent list with all (Principal, WithdrawalRequest) pairs
     for ((principal, requestsList) in mapArray.values()) {
       for (request in requestsList.values()) {
         withdrawalRequestsList.add((principal, request));
       };
     };
-
-    // Convert persistent list to array
     withdrawalRequestsList.toArray();
   };
 
-  // Mark withdrawal as processed (admin only)
+  // Mark withdrawal as processed (admin)
   public shared ({ caller }) func markWithdrawalProcessed(user : Principal, index : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can process withdrawals");
-    };
+    requireLogin(caller);
     switch (withdrawalRequestsState.get(user)) {
-      case (null) { Runtime.trap("No withdrawal request at index " # index.toText()) };
+      case (null) { Runtime.trap("No withdrawal requests found for user") };
       case (?requests) {
-        if (index >= requests.size()) {
+        let arr = requests.toArray();
+        if (index >= arr.size()) {
           Runtime.trap("No withdrawal request at index " # index.toText());
         };
-        requests.reverse().add({ amount = index; requestTime = Time.now(); processed = true });
-        withdrawalRequestsState.add(user, requests.reverse());
+        let newList = List.empty<WithdrawalRequest>();
+        var i = 0;
+        for (req in arr.values()) {
+          if (i == index) {
+            newList.add({ amount = req.amount; requestTime = req.requestTime; processed = true });
+          } else {
+            newList.add(req);
+          };
+          i += 1;
+        };
+        withdrawalRequestsState.add(user, newList);
       };
     };
-    adminLogs.add("Admin marked withdrawal as processed for user " # user.toText() # " with amount " # index.toText());
+    adminLogs.add("Admin marked withdrawal as processed for user " # user.toText());
   };
 
-  // Admin: Update multipliers (ADMIN ONLY)
+  // Admin: Update multipliers
   public shared ({ caller }) func setMultipliers(red : Float, green : Float, violet : Float) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can set multipliers");
-    };
+    requireLogin(caller);
+    multiplierRed := red;
+    multiplierGreen := green;
+    multiplierViolet := violet;
     adminLogs.add("Admin updated multipliers: red=" # red.toText() # ", green=" # green.toText() # ", violet=" # violet.toText());
   };
 
-  // Toggle auto-resolve mode for next round (ADMIN ONLY)
+  // Toggle auto-resolve mode
   public shared ({ caller }) func toggleAutoResolve() : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can toggle auto-resolve");
-    };
+    requireLogin(caller);
     autoResolveMode := not autoResolveMode;
-    adminLogs.add("Admin toggled auto-resolve mode to " # (if autoResolveMode { "on" } else {
-      "off";
-    }));
+    adminLogs.add("Admin toggled auto-resolve mode to " # (if autoResolveMode { "on" } else { "off" }));
   };
 
-  // Admin: Set manual result for next round (ADMIN ONLY)
+  // Set manual result
   public shared ({ caller }) func setManualResultOverride(result : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can set manual result override");
-    };
+    requireLogin(caller);
     manualResultMode := true;
     nextManualResult := ?result;
     adminLogs.add("Admin set manual result override for next round: " # result);
   };
 
   public shared ({ caller }) func clearManualOverride() : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can clear manual override");
-    };
+    requireLogin(caller);
     manualResultMode := false;
     nextManualResult := null;
     adminLogs.add("Admin cleared manual result override");
@@ -690,14 +585,11 @@ actor {
     if (natIntConversion < 0) { 0 } else { natIntConversion.toNat() };
   };
 
-  // Admin functions to directly update user balances (ADMIN ONLY)
+  // Admin: Adjust user coins
   public shared ({ caller }) func adjustUserCoins(user : Principal, amount : Int) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can adjust user coins");
-    };
+    requireLogin(caller);
     let current = getUserProfileInternal(user);
 
-    // If negative amount, make sure they have enough coins
     if (amount < 0) {
       let requestedAmount = Int.abs(amount);
       if (requestedAmount > current.coins) {
@@ -705,7 +597,6 @@ actor {
       };
     };
 
-    // Set new balance
     let newCoinAmount = if (amount > 0) {
       current.coins + Int.abs(amount);
     } else {
@@ -724,9 +615,7 @@ actor {
   };
 
   public query ({ caller }) func getAdminLogs() : async [Text] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can view logs");
-    };
+    requireLogin(caller);
     adminLogs.toArray();
   };
 };

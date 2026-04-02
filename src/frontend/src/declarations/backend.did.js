@@ -51,15 +51,29 @@ export const MultiplierConfig = IDL.Record({
   'green' : IDL.Float64,
   'violet' : IDL.Float64,
 });
+export const DepositRequest = IDL.Record({
+  'user' : IDL.Principal,
+  'amount' : IDL.Nat,
+  'bonusAmount' : IDL.Nat,
+  'requestTime' : Time,
+  'approved' : IDL.Bool,
+  'index' : IDL.Nat,
+});
+export const PaymentMethod = IDL.Record({
+  'upiId' : IDL.Text,
+  'qrImageUrl' : IDL.Text,
+});
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'adjustUserCoins' : IDL.Func([IDL.Principal, IDL.Int], [], []),
+  'approveDeposit' : IDL.Func([IDL.Nat], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'claimDailyBonus' : IDL.Func([], [], []),
   'clearManualOverride' : IDL.Func([], [], []),
   'depositCoins' : IDL.Func([IDL.Nat], [], []),
   'getAdminLogs' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
+  'getAllDepositRequests' : IDL.Func([], [IDL.Vec(DepositRequest)], ['query']),
   'getAllUserHoldings' : IDL.Func(
       [],
       [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
@@ -93,6 +107,7 @@ export const idlService = IDL.Service({
       ],
       ['query'],
     ),
+  'getPaymentMethod' : IDL.Func([], [PaymentMethod], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
@@ -105,6 +120,8 @@ export const idlService = IDL.Service({
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'setManualResultOverride' : IDL.Func([IDL.Text], [], []),
   'setMultipliers' : IDL.Func([IDL.Float64, IDL.Float64, IDL.Float64], [], []),
+  'setPaymentMethod' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'submitDepositRequest' : IDL.Func([IDL.Nat], [], []),
   'toggleAutoResolve' : IDL.Func([], [], []),
 });
 
@@ -154,15 +171,29 @@ export const idlFactory = ({ IDL }) => {
     'green' : IDL.Float64,
     'violet' : IDL.Float64,
   });
+  const DepositRequest = IDL.Record({
+    'user' : IDL.Principal,
+    'amount' : IDL.Nat,
+    'bonusAmount' : IDL.Nat,
+    'requestTime' : Time,
+    'approved' : IDL.Bool,
+    'index' : IDL.Nat,
+  });
+  const PaymentMethod = IDL.Record({
+    'upiId' : IDL.Text,
+    'qrImageUrl' : IDL.Text,
+  });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'adjustUserCoins' : IDL.Func([IDL.Principal, IDL.Int], [], []),
+    'approveDeposit' : IDL.Func([IDL.Nat], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'claimDailyBonus' : IDL.Func([], [], []),
     'clearManualOverride' : IDL.Func([], [], []),
     'depositCoins' : IDL.Func([IDL.Nat], [], []),
     'getAdminLogs' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
+    'getAllDepositRequests' : IDL.Func([], [IDL.Vec(DepositRequest)], ['query']),
     'getAllUserHoldings' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
@@ -202,6 +233,7 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
+    'getPaymentMethod' : IDL.Func([], [PaymentMethod], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
@@ -218,6 +250,8 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'setPaymentMethod' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'submitDepositRequest' : IDL.Func([IDL.Nat], [], []),
     'toggleAutoResolve' : IDL.Func([], [], []),
   });
 };
