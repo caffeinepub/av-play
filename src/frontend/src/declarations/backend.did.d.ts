@@ -42,6 +42,7 @@ export interface UserProfile {
   'lastBonusTime' : Time,
   'dailyStreak' : bigint,
   'betHistory' : Array<Bet>,
+  'lastSpinTime' : Time,
 }
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
@@ -108,6 +109,7 @@ export interface _SERVICE {
   'setMultipliers' : ActorMethod<[number, number, number], undefined>,
   'setPaymentMethod' : ActorMethod<[string, string], undefined>,
   'submitDepositRequest' : ActorMethod<[bigint], undefined>,
+  'spinWheel' : ActorMethod<[], bigint>,
   'toggleAutoResolve' : ActorMethod<[], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;

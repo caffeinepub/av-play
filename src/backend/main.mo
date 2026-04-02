@@ -28,6 +28,7 @@ actor {
     betHistory : [Bet];
     withdrawalRequests : [WithdrawalRequest];
     dailyStreak : Nat;
+    lastSpinTime : Time.Time;
   };
 
   type WithdrawalRequest = {
@@ -140,6 +141,9 @@ actor {
   let completedRounds = Map.empty<Nat, Round>();
   let adminLogs = List.empty<Text>();
 
+  // Spin time state (separate map to avoid stable type compatibility issues)
+  let userSpinTimes = Map.empty<Principal, Time.Time>();
+
   // Deposit requests state
   let depositRequests = List.empty<DepositRequest>();
   var depositRequestCount : Nat = 0;
@@ -241,24 +245,28 @@ actor {
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     requireLogin(caller);
     let internalUser = getUserProfileInternal(caller);
+    let spinTime = switch (userSpinTimes.get(caller)) { case null 0; case (?t) t };
     ?{
       coins = internalUser.coins;
       lastBonusTime = internalUser.lastBonusTime;
       betHistory = internalUser.betHistory.toArray();
       withdrawalRequests = internalUser.withdrawalRequests.toArray();
       dailyStreak = internalUser.dailyStreak;
+      lastSpinTime = spinTime;
     };
   };
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
     requireLogin(caller);
     let internalUser = getUserProfileInternal(user);
+    let spinTime2 = switch (userSpinTimes.get(user)) { case null 0; case (?t) t };
     ?{
       coins = internalUser.coins;
       lastBonusTime = internalUser.lastBonusTime;
       betHistory = internalUser.betHistory.toArray();
       withdrawalRequests = internalUser.withdrawalRequests.toArray();
       dailyStreak = internalUser.dailyStreak;
+      lastSpinTime = spinTime2;
     };
   };
 
@@ -271,6 +279,7 @@ actor {
       withdrawalRequests = List.fromArray(profile.withdrawalRequests);
       dailyStreak = profile.dailyStreak;
     };
+    userSpinTimes.add(caller, profile.lastSpinTime);
     userState.add(caller, newUser);
   };
 
@@ -414,7 +423,7 @@ actor {
             betHistory = newBetHistory;
             withdrawalRequests = existingUser.withdrawalRequests;
             dailyStreak = existingUser.dailyStreak;
-          },
+                },
         );
 
         adminLogs.add("User " # caller.toText() # ": New bet " # amount.toText() # " coins on " # color);
@@ -607,6 +616,38 @@ actor {
     };
     userState.add(user, newUser);
     adminLogs.add("Admin adjusted user " # user.toText() # "'s coin balance to " # newCoinAmount.toText());
+  };
+
+
+  // Spin wheel (once per 24 hours, wins from [9, 19, 29] coins only)
+  let spinCooldown = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
+  let spinPrizes : [Nat] = [9, 19, 29];
+
+  public shared ({ caller }) func spinWheel() : async Nat {
+    requireLogin(caller);
+    let existingUser = getUserProfileInternal(caller);
+    let lastSpinTime = switch (userSpinTimes.get(caller)) { case null 0; case (?t) t };
+
+    if (Time.now() - lastSpinTime < spinCooldown) {
+      Runtime.trap("Spin available once every 24 hours");
+    };
+
+    // Pick a random prize from [9, 19, 29] using time-based pseudo-random
+    let timeNow = Time.now();
+    let seed = Int.abs(timeNow) % 3;
+    let wonAmount = spinPrizes[seed];
+
+    let newUser = {
+      coins = existingUser.coins + wonAmount;
+      lastBonusTime = existingUser.lastBonusTime;
+      betHistory = existingUser.betHistory;
+      withdrawalRequests = existingUser.withdrawalRequests;
+      dailyStreak = existingUser.dailyStreak;
+    };
+    userState.add(caller, newUser);
+    userSpinTimes.add(caller, timeNow);
+    adminLogs.add("User " # caller.toText() # " spun wheel and won " # wonAmount.toText() # " coins");
+    wonAmount;
   };
 
   public query ({ caller }) func getAdminLogs() : async [Text] {

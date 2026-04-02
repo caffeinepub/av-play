@@ -316,6 +316,19 @@ export function useAdjustUserCoins() {
   });
 }
 
+export function useSpinWheel() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<bigint> => {
+      if (!actor) throw new Error("Not connected");
+      return actor.spinWheel();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["userProfile"] });
+    },
+  });
+}
 export function useMarkWithdrawalProcessed() {
   const { actor } = useActor();
   const qc = useQueryClient();

@@ -30,6 +30,7 @@ export const UserProfile = IDL.Record({
   'lastBonusTime' : Time,
   'dailyStreak' : IDL.Nat,
   'betHistory' : IDL.Vec(Bet),
+  'lastSpinTime' : Time,
 });
 export const GamePhase = IDL.Variant({
   'reveal' : IDL.Record({ 'startTime' : Time, 'result' : IDL.Opt(IDL.Text) }),
@@ -122,6 +123,7 @@ export const idlService = IDL.Service({
   'setMultipliers' : IDL.Func([IDL.Float64, IDL.Float64, IDL.Float64], [], []),
   'setPaymentMethod' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'submitDepositRequest' : IDL.Func([IDL.Nat], [], []),
+  'spinWheel' : IDL.Func([], [IDL.Nat], []),
   'toggleAutoResolve' : IDL.Func([], [], []),
 });
 
@@ -150,6 +152,7 @@ export const idlFactory = ({ IDL }) => {
     'lastBonusTime' : Time,
     'dailyStreak' : IDL.Nat,
     'betHistory' : IDL.Vec(Bet),
+    'lastSpinTime' : Time,
   });
   const GamePhase = IDL.Variant({
     'reveal' : IDL.Record({ 'startTime' : Time, 'result' : IDL.Opt(IDL.Text) }),
@@ -252,6 +255,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'setPaymentMethod' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'submitDepositRequest' : IDL.Func([IDL.Nat], [], []),
+    'spinWheel' : IDL.Func([], [IDL.Nat], []),
     'toggleAutoResolve' : IDL.Func([], [], []),
   });
 };

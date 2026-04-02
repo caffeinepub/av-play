@@ -56,6 +56,7 @@ export interface UserProfile {
     lastBonusTime: Time;
     dailyStreak: bigint;
     betHistory: Array<Bet>;
+    lastSpinTime: Time;
 }
 export interface DepositRequest {
     user: Principal;
@@ -114,5 +115,6 @@ export interface backendInterface {
     setMultipliers(red: number, green: number, violet: number): Promise<void>;
     setPaymentMethod(upiId: string, qrImageUrl: string): Promise<void>;
     submitDepositRequest(amount: bigint): Promise<void>;
+    spinWheel(): Promise<bigint>;
     toggleAutoResolve(): Promise<void>;
 }

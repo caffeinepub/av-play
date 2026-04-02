@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import type { UserProfile } from "../backend.d";
 import { useClaimBonus } from "../hooks/useQueries";
 import { canClaimBonus } from "../utils/gameUtils";
+import { SpinWheel } from "./SpinWheel";
 
 interface ActivitySheetProps {
   open: boolean;
@@ -273,6 +274,15 @@ export function ActivitySheet({ open, onClose, profile }: ActivitySheetProps) {
             Complete all 7 days for the full reward cycle. Missing a day resets
             your streak.
           </p>
+
+          {/* Divider */}
+          <div
+            className="border-t"
+            style={{ borderColor: "oklch(0.25 0.04 240 / 0.4)" }}
+          />
+
+          {/* Spin Wheel */}
+          <SpinWheel profile={profile} />
         </div>
       </SheetContent>
     </Sheet>

@@ -138,6 +138,7 @@ export interface UserProfile {
     lastBonusTime: Time;
     dailyStreak: bigint;
     betHistory: Array<Bet>;
+    lastSpinTime: Time;
 }
 export enum UserRole {
     admin = "admin",
@@ -196,6 +197,7 @@ export interface backendInterface {
     getPaymentMethod(): Promise<PaymentMethod>;
     setPaymentMethod(upiId: string, qrImageUrl: string): Promise<void>;
     submitDepositRequest(amount: bigint): Promise<void>;
+    spinWheel(): Promise<bigint>;
     toggleAutoResolve(): Promise<void>;
 }
 import type { Bet as _Bet, GamePhase as _GamePhase, MultiplierConfig as _MultiplierConfig, RoundView as _RoundView, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
@@ -532,6 +534,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.toggleAutoResolve();
+            return result;
+        }
+    }
+    async spinWheel(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.spinWheel();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.spinWheel();
             return result;
         }
     }
