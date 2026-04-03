@@ -199,6 +199,7 @@ export interface backendInterface {
     submitDepositRequest(amount: bigint): Promise<void>;
     spinWheel(): Promise<bigint>;
     toggleAutoResolve(): Promise<void>;
+    hasFirstDepositBonus(): Promise<boolean>;
 }
 import type { Bet as _Bet, GamePhase as _GamePhase, MultiplierConfig as _MultiplierConfig, RoundView as _RoundView, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -569,6 +570,10 @@ export class Backend implements backendInterface {
     }
     async submitDepositRequest(arg0: bigint): Promise<void> {
         const result = await this.actor.submitDepositRequest(arg0);
+        return result;
+    }
+    async hasFirstDepositBonus(): Promise<boolean> {
+        const result = await this.actor.hasFirstDepositBonus();
         return result;
     }
 }

@@ -340,3 +340,19 @@ export function useMarkWithdrawalProcessed() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["withdrawalRequests"] }),
   });
 }
+
+export function useHasFirstDepositBonus() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["hasFirstDepositBonus"],
+    queryFn: async () => {
+      if (!actor) return false;
+      try {
+        return await actor.hasFirstDepositBonus();
+      } catch {
+        return false;
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}

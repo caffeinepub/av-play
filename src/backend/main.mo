@@ -144,6 +144,9 @@ actor {
   // Spin time state (separate map to avoid stable type compatibility issues)
   let userSpinTimes = Map.empty<Principal, Time.Time>();
 
+  // Track which users have already received the first-deposit bonus
+  let firstDepositBonusGiven = Map.empty<Principal, Bool>();
+
   // Deposit requests state
   let depositRequests = List.empty<DepositRequest>();
   var depositRequestCount : Nat = 0;
@@ -314,7 +317,13 @@ actor {
     requireLogin(caller);
     if (amount == 0) { Runtime.trap("Must deposit more than 0") };
 
-    let bonusAmount = if (amount >= 100) { 100 } else { 0 };
+    // Bonus only on first deposit of ₹100+
+    let alreadyGotBonus = switch (firstDepositBonusGiven.get(caller)) {
+      case (?true) true;
+      case (_) false;
+    };
+    let bonusAmount = if (not alreadyGotBonus and amount >= 100) { 100 } else { 0 };
+
     let request : DepositRequest = {
       user = caller;
       amount;
@@ -325,7 +334,7 @@ actor {
     };
     depositRequestCount += 1;
     depositRequests.add(request);
-    adminLogs.add("Deposit request: User " # caller.toText() # " requested " # amount.toText() # " coins");
+    adminLogs.add("Deposit request: User " # caller.toText() # " requested " # amount.toText() # " coins, bonus=" # bonusAmount.toText());
   };
 
   // Get all deposit requests (admin)
@@ -368,6 +377,11 @@ actor {
       dailyStreak = existingUser.dailyStreak;
     };
     userState.add(approvedUser, newUser);
+
+    // If bonus was given, mark it so it won't be given again
+    if (approvedBonus > 0) {
+      firstDepositBonusGiven.add(approvedUser, true);
+    };
 
     // Mark request as approved
     let updatedRequests = List.empty<DepositRequest>();
@@ -423,7 +437,7 @@ actor {
             betHistory = newBetHistory;
             withdrawalRequests = existingUser.withdrawalRequests;
             dailyStreak = existingUser.dailyStreak;
-                },
+                  },
         );
 
         adminLogs.add("User " # caller.toText() # ": New bet " # amount.toText() # " coins on " # color);
@@ -648,6 +662,14 @@ actor {
     userSpinTimes.add(caller, timeNow);
     adminLogs.add("User " # caller.toText() # " spun wheel and won " # wonAmount.toText() # " coins");
     wonAmount;
+  };
+
+  // Check if a user has already received the first deposit bonus (query for frontend)
+  public query ({ caller }) func hasFirstDepositBonus() : async Bool {
+    switch (firstDepositBonusGiven.get(caller)) {
+      case (?true) true;
+      case (_) false;
+    };
   };
 
   public query ({ caller }) func getAdminLogs() : async [Text] {

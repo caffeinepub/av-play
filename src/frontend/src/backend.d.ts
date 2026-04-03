@@ -106,6 +106,7 @@ export interface backendInterface {
     }>;
     getPaymentMethod(): Promise<PaymentMethod>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
+    hasFirstDepositBonus(): Promise<boolean>;
     isCallerAdmin(): Promise<boolean>;
     markWithdrawalProcessed(user: Principal, index: bigint): Promise<void>;
     placeBet(color: string, amount: bigint): Promise<void>;

@@ -14,6 +14,7 @@ import {
   Clock,
   Coins,
   Copy,
+  ExternalLink,
   Flame,
   Gift,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import type { UserProfile } from "../backend.d";
 import {
   useClaimBonus,
+  useHasFirstDepositBonus,
   usePaymentMethod,
   useRequestWithdrawal,
   useSubmitDepositRequest,
@@ -32,6 +34,68 @@ import { canClaimBonus, formatCoins } from "../utils/gameUtils";
 interface WalletPanelProps {
   profile: UserProfile | null;
 }
+
+// Build UPI deep link for a payment app
+function buildUpiDeepLink(
+  app: "gpay" | "phonepe" | "bhim" | "paytm",
+  upiId: string,
+  amount: number,
+  note: string,
+): string {
+  const base = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=AVPlay&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+  // Each app uses its own scheme for direct open
+  switch (app) {
+    case "gpay":
+      return `gpay://upi/pay?pa=${encodeURIComponent(upiId)}&pn=AVPlay&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+    case "phonepe":
+      return `phonepe://pay?pa=${encodeURIComponent(upiId)}&pn=AVPlay&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+    case "bhim":
+      return `bhim://pay?pa=${encodeURIComponent(upiId)}&pn=AVPlay&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+    case "paytm":
+      return `paytmmp://pay?pa=${encodeURIComponent(upiId)}&pn=AVPlay&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+    default:
+      return base;
+  }
+}
+
+const PAYMENT_APPS = [
+  {
+    id: "gpay" as const,
+    label: "Google Pay",
+    shortLabel: "GPay",
+    color: "#4285F4",
+    bgColor: "rgba(66,133,244,0.12)",
+    borderColor: "rgba(66,133,244,0.4)",
+    emoji: "🔵",
+  },
+  {
+    id: "phonepe" as const,
+    label: "PhonePe",
+    shortLabel: "PhonePe",
+    color: "#5f259f",
+    bgColor: "rgba(95,37,159,0.12)",
+    borderColor: "rgba(95,37,159,0.4)",
+    emoji: "💜",
+  },
+  {
+    id: "bhim" as const,
+    label: "BHIM UPI",
+    shortLabel: "BHIM",
+    color: "#1E7E34",
+    bgColor: "rgba(30,126,52,0.12)",
+    borderColor: "rgba(30,126,52,0.4)",
+    emoji: "🟢",
+  },
+  {
+    id: "paytm" as const,
+    label: "Paytm",
+    shortLabel: "Paytm",
+    color: "#00BAF2",
+    bgColor: "rgba(0,186,242,0.12)",
+    borderColor: "rgba(0,186,242,0.4)",
+    emoji: "🩵",
+  },
+];
 
 export function WalletPanel({ profile }: WalletPanelProps) {
   const [depositAmount, setDepositAmount] = useState("");
@@ -46,6 +110,7 @@ export function WalletPanel({ profile }: WalletPanelProps) {
   const withdraw = useRequestWithdrawal();
   const claimBonus = useClaimBonus();
   const paymentMethod = usePaymentMethod();
+  const { data: hasReceivedBonus } = useHasFirstDepositBonus();
 
   const upiId = paymentMethod.data?.upiId ?? "6205006521@okbizaxis";
   const qrImageUrl =
@@ -58,13 +123,25 @@ export function WalletPanel({ profile }: WalletPanelProps) {
 
   const parsedAmount = Number.parseInt(depositAmount, 10);
   const isValidAmount = !Number.isNaN(parsedAmount) && parsedAmount > 0;
-  const qualifiesForBonus = isValidAmount && parsedAmount >= 100;
+  // Bonus only applies on the first deposit of ₹100+
+  const qualifiesForBonus =
+    isValidAmount && parsedAmount >= 100 && !hasReceivedBonus;
   const coinsToCredit = isValidAmount ? parsedAmount : 0;
 
   const handleCopyUpi = () => {
     navigator.clipboard.writeText(upiId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handlePayWithApp = (appId: "gpay" | "phonepe" | "bhim" | "paytm") => {
+    const link = buildUpiDeepLink(
+      appId,
+      upiId,
+      parsedAmount,
+      `AVPlay deposit ${parsedAmount}`,
+    );
+    window.location.href = link;
   };
 
   const handleSubmitDeposit = async () => {
@@ -193,23 +270,25 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                   1 coin.
                 </p>
 
-                {/* Bonus callout */}
-                <div
-                  className="rounded-lg p-3 text-xs flex items-start gap-2"
-                  style={{
-                    background: "oklch(0.57 0.28 300 / 0.1)",
-                    border: "1px solid oklch(0.57 0.28 300 / 0.35)",
-                  }}
-                >
-                  <Gift
-                    className="w-4 h-4 shrink-0 mt-0.5"
-                    style={{ color: "oklch(0.68 0.25 300)" }}
-                  />
-                  <span style={{ color: "oklch(0.75 0.18 300)" }}>
-                    <strong>Deposit ₹100 or more</strong> and get a{" "}
-                    <strong>100 bonus coins</strong> added!
-                  </span>
-                </div>
+                {/* Bonus callout — only shown if not yet received */}
+                {!hasReceivedBonus && (
+                  <div
+                    className="rounded-lg p-3 text-xs flex items-start gap-2"
+                    style={{
+                      background: "oklch(0.57 0.28 300 / 0.1)",
+                      border: "1px solid oklch(0.57 0.28 300 / 0.35)",
+                    }}
+                  >
+                    <Gift
+                      className="w-4 h-4 shrink-0 mt-0.5"
+                      style={{ color: "oklch(0.68 0.25 300)" }}
+                    />
+                    <span style={{ color: "oklch(0.75 0.18 300)" }}>
+                      <strong>First deposit of ₹100 or more</strong> gets a{" "}
+                      <strong>100 bonus coins</strong> — one time only!
+                    </span>
+                  </div>
+                )}
 
                 <Input
                   type="number"
@@ -253,7 +332,7 @@ export function WalletPanel({ profile }: WalletPanelProps) {
               </div>
             )}
 
-            {/* STEP 2: Show QR / UPI */}
+            {/* STEP 2: Show QR / UPI + payment app buttons */}
             {depositStep === "pay" && (
               <div className="space-y-3 pt-2">
                 <div
@@ -270,11 +349,53 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                   to the UPI ID below
                 </div>
 
+                {/* Payment App Buttons */}
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-2 text-center uppercase tracking-wider font-semibold">
+                    Pay directly with
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PAYMENT_APPS.map((app) => (
+                      <button
+                        key={app.id}
+                        type="button"
+                        onClick={() => handlePayWithApp(app.id)}
+                        className="flex items-center justify-center gap-2 rounded-lg p-2.5 text-xs font-bold transition-all active:scale-95"
+                        style={{
+                          background: app.bgColor,
+                          border: `1px solid ${app.borderColor}`,
+                          color: app.color,
+                        }}
+                      >
+                        <span className="text-base leading-none">
+                          {app.emoji}
+                        </span>
+                        <span>{app.label}</span>
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div
+                    className="flex-1 h-px"
+                    style={{ background: "oklch(0.3 0.03 0 / 0.6)" }}
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    or scan QR
+                  </span>
+                  <div
+                    className="flex-1 h-px"
+                    style={{ background: "oklch(0.3 0.03 0 / 0.6)" }}
+                  />
+                </div>
+
                 {/* QR Code */}
                 <div className="flex justify-center">
                   <div
                     className="rounded-xl overflow-hidden p-2"
-                    style={{ background: "white", width: 180, height: 180 }}
+                    style={{ background: "white", width: 160, height: 160 }}
                   >
                     <img
                       src={qrImageUrl}
@@ -313,11 +434,6 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                     )}
                   </Button>
                 </div>
-
-                <p className="text-[11px] text-muted-foreground text-center">
-                  Use Google Pay, PhonePe, Paytm, or any UPI app to scan &amp;
-                  pay
-                </p>
 
                 <div className="flex gap-2">
                   <Button
@@ -361,7 +477,7 @@ export function WalletPanel({ profile }: WalletPanelProps) {
                   >
                     <span style={{ color: "oklch(0.75 0.18 300)" }}>
                       🎁 You'll also receive <strong>100 bonus coins</strong>{" "}
-                      for depositing ₹100+
+                      (first deposit bonus!)
                     </span>
                   </div>
                 )}

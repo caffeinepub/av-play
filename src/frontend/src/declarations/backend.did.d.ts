@@ -100,6 +100,7 @@ export interface _SERVICE {
   >,
   'getPaymentMethod' : ActorMethod<[], PaymentMethod>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
+  'hasFirstDepositBonus' : ActorMethod<[], boolean>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'markWithdrawalProcessed' : ActorMethod<[Principal, bigint], undefined>,
   'placeBet' : ActorMethod<[string, bigint], undefined>,
