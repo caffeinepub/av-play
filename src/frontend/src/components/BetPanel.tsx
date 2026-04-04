@@ -15,6 +15,11 @@ interface BetPanelProps {
   userCoins: bigint;
   alreadyBet: boolean;
   timeRemaining: number;
+  colorBetCount: number;
+  sizeBetCount: number;
+  lockedColor: string | null;
+  lockedSize: string | null;
+  hasApprovedDeposit: boolean;
   onBetPlaced?: (color: string, amount: number, mode: "color" | "size") => void;
 }
 
@@ -24,6 +29,11 @@ export function BetPanel({
   userCoins,
   alreadyBet,
   timeRemaining,
+  colorBetCount,
+  sizeBetCount,
+  lockedColor,
+  lockedSize,
+  hasApprovedDeposit,
   onBetPlaced,
 }: BetPanelProps) {
   const [amount, setAmount] = useState<number>(50);
@@ -45,7 +55,30 @@ export function BetPanel({
         : selectedSize === "small"
           ? "red"
           : null;
-  const canBet = isBetting && !!effectiveColor && !alreadyBet;
+
+  const colorBetsMaxed = betMode === "color" && colorBetCount >= 2;
+  const sizeBetsMaxed = betMode === "size" && sizeBetCount >= 2;
+
+  // Check if selected color/size is locked to a different option
+  const colorLocked =
+    betMode === "color" &&
+    lockedColor !== null &&
+    selectedColor !== lockedColor;
+  const sizeLocked =
+    betMode === "size" &&
+    lockedSize !== null &&
+    selectedSize !== null &&
+    selectedSize !== lockedSize;
+
+  const canBet =
+    isBetting &&
+    !!effectiveColor &&
+    !alreadyBet &&
+    !colorBetsMaxed &&
+    !sizeBetsMaxed &&
+    !colorLocked &&
+    !sizeLocked;
+
   const cfg =
     betMode === "color" && selectedColor ? getColorConfig(selectedColor) : null;
 
@@ -56,10 +89,12 @@ export function BetPanel({
   const handlePlaceBet = async () => {
     if (!canBet || !effectiveColor) return;
     const betAmount = BigInt(effectiveAmount);
-    if (betAmount <= 0n || betAmount > userCoins) {
-      toast.error(
-        betAmount <= 0n ? "Invalid bet amount" : "Insufficient coins",
-      );
+    if (betAmount <= 0n) {
+      toast.error("Invalid bet amount");
+      return;
+    }
+    if (betAmount > userCoins) {
+      toast.error("Insufficient coins");
       return;
     }
     try {
@@ -93,235 +128,380 @@ export function BetPanel({
       className="card-surface rounded-xl p-4 space-y-4"
       data-ocid="bet.panel"
     >
-      {/* Mode toggle */}
-      <div
-        className="flex gap-1 p-1 rounded-xl"
-        style={{ background: "oklch(0.14 0.02 240 / 0.8)" }}
-      >
-        {(["color", "size"] as const).map((mode) => (
-          <button
-            type="button"
-            key={mode}
-            onClick={() => setBetMode(mode)}
-            className="flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all"
-            style={{
-              background:
-                betMode === mode ? "oklch(0.85 0.2 168 / 0.18)" : "transparent",
-              border:
-                betMode === mode
-                  ? "1px solid oklch(0.85 0.2 168 / 0.5)"
-                  : "1px solid transparent",
-              color:
-                betMode === mode
-                  ? "oklch(0.85 0.2 168)"
-                  : "oklch(0.55 0.02 240)",
-            }}
-            data-ocid={`bet.mode_${mode}.toggle`}
-          >
-            {mode === "color" ? "🎨 Color" : "📐 Size"}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
-          Place Bet
-        </h3>
-        {betMode === "color" && selectedColor && cfg && (
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}
-          >
-            {cfg.label} selected
-          </span>
-        )}
-        {betMode === "size" && selectedSize && (
-          <span
-            className="text-xs font-bold px-2 py-0.5 rounded-full border"
-            style={{
-              background:
-                selectedSize === "big"
-                  ? "oklch(0.72 0.18 220 / 0.15)"
-                  : "oklch(0.72 0.22 50 / 0.15)",
-              borderColor:
-                selectedSize === "big"
-                  ? "oklch(0.72 0.18 220 / 0.5)"
-                  : "oklch(0.72 0.22 50 / 0.5)",
-              color:
-                selectedSize === "big"
-                  ? "oklch(0.72 0.18 220)"
-                  : "oklch(0.72 0.22 50)",
-            }}
-          >
-            {selectedSize === "big" ? "BIG" : "SMALL"} selected
-          </span>
-        )}
-      </div>
-
-      {/* Size selector buttons */}
-      {betMode === "size" && isBetting && !alreadyBet && (
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => setSelectedSize("big")}
-            data-ocid="bet.big.button"
-            className="py-4 rounded-xl font-black text-base uppercase tracking-wider transition-all"
-            style={{
-              background:
-                selectedSize === "big"
-                  ? "oklch(0.72 0.18 220 / 0.25)"
-                  : "oklch(0.72 0.18 220 / 0.08)",
-              border:
-                selectedSize === "big"
-                  ? "2px solid oklch(0.72 0.18 220 / 0.8)"
-                  : "1px solid oklch(0.72 0.18 220 / 0.3)",
-              color: "oklch(0.72 0.18 220)",
-              boxShadow:
-                selectedSize === "big"
-                  ? "0 0 20px oklch(0.72 0.18 220 / 0.3)"
-                  : "none",
-            }}
-          >
-            <div className="text-2xl mb-0.5">⬆️</div>
-            BIG
-            <div className="text-[10px] font-normal opacity-70 mt-0.5">
-              2× payout
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedSize("small")}
-            data-ocid="bet.small.button"
-            className="py-4 rounded-xl font-black text-base uppercase tracking-wider transition-all"
-            style={{
-              background:
-                selectedSize === "small"
-                  ? "oklch(0.72 0.22 50 / 0.25)"
-                  : "oklch(0.72 0.22 50 / 0.08)",
-              border:
-                selectedSize === "small"
-                  ? "2px solid oklch(0.72 0.22 50 / 0.8)"
-                  : "1px solid oklch(0.72 0.22 50 / 0.3)",
-              color: "oklch(0.72 0.22 50)",
-              boxShadow:
-                selectedSize === "small"
-                  ? "0 0 20px oklch(0.72 0.22 50 / 0.3)"
-                  : "none",
-            }}
-          >
-            <div className="text-2xl mb-0.5">⬇️</div>
-            SMALL
-            <div className="text-[10px] font-normal opacity-70 mt-0.5">
-              2× payout
-            </div>
-          </button>
-        </div>
-      )}
-
-      {bettingClosed && (
+      {!hasApprovedDeposit && (
         <div
-          className="flex items-center justify-center py-3 rounded-lg border"
+          className="flex flex-col items-center justify-center py-6 rounded-xl text-center gap-2"
           style={{
-            background: "oklch(0.60 0.22 25 / 0.1)",
-            border: "1px solid oklch(0.60 0.22 25 / 0.4)",
+            background: "oklch(0.60 0.22 25 / 0.07)",
+            border: "1px solid oklch(0.60 0.22 25 / 0.3)",
           }}
-          data-ocid="bet.closed.error_state"
+          data-ocid="bet.deposit_required.error_state"
         >
-          <span
-            className="text-xs font-semibold uppercase tracking-wider"
+          <span className="text-2xl">🔒</span>
+          <p
+            className="text-sm font-bold uppercase tracking-wider"
             style={{ color: "oklch(0.70 0.18 25)" }}
           >
-            🔒 Betting closed — last 10 seconds
-          </span>
+            Deposit Required
+          </p>
+          <p className="text-xs text-muted-foreground max-w-[220px]">
+            Make a deposit of ₹100 or more and wait for admin approval to unlock
+            betting.
+          </p>
         </div>
       )}
-      {!isBetting && !bettingClosed && (
-        <div
-          className="flex items-center justify-center py-3 rounded-lg bg-muted/30 border border-border/40"
-          data-ocid="bet.closed.error_state"
-        >
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            {phase === "reveal"
-              ? "🎲 Revealing result..."
-              : "⏳ Round starting soon..."}
-          </span>
-        </div>
-      )}
-
-      {alreadyBet && isBetting && (
-        <div
-          className="flex items-center justify-center py-2 rounded-lg"
-          style={{
-            background: "oklch(0.85 0.2 168 / 0.1)",
-            border: "1px solid oklch(0.85 0.2 168 / 0.3)",
-          }}
-          data-ocid="bet.placed.success_state"
-        >
-          <span className="text-xs font-semibold text-neon-green">
-            ✓ Bet placed this round
-          </span>
-        </div>
-      )}
-
-      {isBetting && !alreadyBet && (
+      {hasApprovedDeposit && (
         <>
-          <div className="flex flex-wrap gap-2">
-            {AMOUNT_CHIPS.map((chip) => (
+          {/* Mode toggle */}
+          <div
+            className="flex gap-1 p-1 rounded-xl"
+            style={{ background: "oklch(0.14 0.02 240 / 0.8)" }}
+          >
+            {(["color", "size"] as const).map((mode) => (
               <button
                 type="button"
-                key={chip}
-                data-ocid={`bet.amount_${chip}.button`}
-                onClick={() => {
-                  setAmount(chip);
-                  setCustomAmount("");
+                key={mode}
+                onClick={() => setBetMode(mode)}
+                className="flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all"
+                style={{
+                  background:
+                    betMode === mode
+                      ? "oklch(0.85 0.2 168 / 0.18)"
+                      : "transparent",
+                  border:
+                    betMode === mode
+                      ? "1px solid oklch(0.85 0.2 168 / 0.5)"
+                      : "1px solid transparent",
+                  color:
+                    betMode === mode
+                      ? "oklch(0.85 0.2 168)"
+                      : "oklch(0.55 0.02 240)",
                 }}
-                className={[
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all border",
-                  amount === chip && !customAmount
-                    ? "border-neon-green/70 text-neon-green bg-neon-green/10"
-                    : "border-border/40 text-muted-foreground hover:border-border",
-                ].join(" ")}
+                data-ocid={`bet.mode_${mode}.toggle`}
               >
-                {chip}
+                {mode === "color" ? "🎨 Color" : "📐 Size"}
               </button>
             ))}
-            <button
-              type="button"
-              data-ocid="bet.max.button"
-              onClick={() => {
-                setAmount(Number(userCoins));
-                setCustomAmount(String(Number(userCoins)));
-              }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold border border-border/40 text-muted-foreground hover:border-border transition-all"
-            >
-              MAX
-            </button>
           </div>
 
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              placeholder="Custom amount..."
-              value={customAmount}
-              onChange={(e) => setCustomAmount(e.target.value)}
-              data-ocid="bet.amount.input"
-              className="text-sm bg-muted/30 border-border/40 text-foreground"
-            />
-          </div>
-
-          <Button
-            onClick={handlePlaceBet}
-            disabled={!canBet || placeBet.isPending}
-            data-ocid="bet.submit.button"
-            className="w-full font-bold text-sm py-5 btn-gradient text-background hover:opacity-90 transition-all disabled:opacity-40"
-          >
-            {placeBet.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Placing Bet...
-              </>
-            ) : (
-              betLabel
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+                Place Bet
+              </h3>
+              {/* Bets counter */}
+              {isBetting && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{
+                    background:
+                      betMode === "color"
+                        ? colorBetCount >= 2
+                          ? "oklch(0.60 0.22 25 / 0.15)"
+                          : "oklch(0.85 0.2 168 / 0.1)"
+                        : sizeBetCount >= 2
+                          ? "oklch(0.60 0.22 25 / 0.15)"
+                          : "oklch(0.85 0.2 168 / 0.1)",
+                    color:
+                      betMode === "color"
+                        ? colorBetCount >= 2
+                          ? "oklch(0.70 0.18 25)"
+                          : "oklch(0.85 0.2 168)"
+                        : sizeBetCount >= 2
+                          ? "oklch(0.70 0.18 25)"
+                          : "oklch(0.85 0.2 168)",
+                    border:
+                      betMode === "color"
+                        ? colorBetCount >= 2
+                          ? "1px solid oklch(0.60 0.22 25 / 0.4)"
+                          : "1px solid oklch(0.85 0.2 168 / 0.3)"
+                        : sizeBetCount >= 2
+                          ? "1px solid oklch(0.60 0.22 25 / 0.4)"
+                          : "1px solid oklch(0.85 0.2 168 / 0.3)",
+                  }}
+                >
+                  Bets: {betMode === "color" ? colorBetCount : sizeBetCount}/2
+                </span>
+              )}
+            </div>
+            {betMode === "color" && selectedColor && cfg && (
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}
+              >
+                {cfg.label} selected
+              </span>
             )}
-          </Button>
+            {betMode === "size" && selectedSize && (
+              <span
+                className="text-xs font-bold px-2 py-0.5 rounded-full border"
+                style={{
+                  background:
+                    selectedSize === "big"
+                      ? "oklch(0.72 0.18 220 / 0.15)"
+                      : "oklch(0.72 0.22 50 / 0.15)",
+                  borderColor:
+                    selectedSize === "big"
+                      ? "oklch(0.72 0.18 220 / 0.5)"
+                      : "oklch(0.72 0.22 50 / 0.5)",
+                  color:
+                    selectedSize === "big"
+                      ? "oklch(0.72 0.18 220)"
+                      : "oklch(0.72 0.22 50)",
+                }}
+              >
+                {selectedSize === "big" ? "BIG" : "SMALL"} selected
+              </span>
+            )}
+          </div>
+
+          {/* Size selector buttons */}
+          {betMode === "size" && isBetting && !alreadyBet && !sizeBetsMaxed && (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedSize("big")}
+                data-ocid="bet.big.button"
+                disabled={lockedSize !== null && lockedSize !== "big"}
+                className="py-4 rounded-xl font-black text-base uppercase tracking-wider transition-all disabled:opacity-40"
+                style={{
+                  background:
+                    selectedSize === "big"
+                      ? "oklch(0.72 0.18 220 / 0.25)"
+                      : "oklch(0.72 0.18 220 / 0.08)",
+                  border:
+                    selectedSize === "big"
+                      ? "2px solid oklch(0.72 0.18 220 / 0.8)"
+                      : "1px solid oklch(0.72 0.18 220 / 0.3)",
+                  color: "oklch(0.72 0.18 220)",
+                  boxShadow:
+                    selectedSize === "big"
+                      ? "0 0 20px oklch(0.72 0.18 220 / 0.3)"
+                      : "none",
+                }}
+              >
+                <div className="text-2xl mb-0.5">⬆️</div>
+                BIG
+                <div className="text-[10px] font-normal opacity-70 mt-0.5">
+                  2× payout
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedSize("small")}
+                data-ocid="bet.small.button"
+                disabled={lockedSize !== null && lockedSize !== "small"}
+                className="py-4 rounded-xl font-black text-base uppercase tracking-wider transition-all disabled:opacity-40"
+                style={{
+                  background:
+                    selectedSize === "small"
+                      ? "oklch(0.72 0.22 50 / 0.25)"
+                      : "oklch(0.72 0.22 50 / 0.08)",
+                  border:
+                    selectedSize === "small"
+                      ? "2px solid oklch(0.72 0.22 50 / 0.8)"
+                      : "1px solid oklch(0.72 0.22 50 / 0.3)",
+                  color: "oklch(0.72 0.22 50)",
+                  boxShadow:
+                    selectedSize === "small"
+                      ? "0 0 20px oklch(0.72 0.22 50 / 0.3)"
+                      : "none",
+                }}
+              >
+                <div className="text-2xl mb-0.5">⬇️</div>
+                SMALL
+                <div className="text-[10px] font-normal opacity-70 mt-0.5">
+                  2× payout
+                </div>
+              </button>
+            </div>
+          )}
+
+          {bettingClosed && (
+            <div
+              className="flex items-center justify-center py-3 rounded-lg border"
+              style={{
+                background: "oklch(0.60 0.22 25 / 0.1)",
+                border: "1px solid oklch(0.60 0.22 25 / 0.4)",
+              }}
+              data-ocid="bet.closed.error_state"
+            >
+              <span
+                className="text-xs font-semibold uppercase tracking-wider"
+                style={{ color: "oklch(0.70 0.18 25)" }}
+              >
+                🔒 Betting closed — last 10 seconds
+              </span>
+            </div>
+          )}
+          {!isBetting && !bettingClosed && (
+            <div
+              className="flex items-center justify-center py-3 rounded-lg bg-muted/30 border border-border/40"
+              data-ocid="bet.closed.error_state"
+            >
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {phase === "reveal"
+                  ? "🎲 Revealing result..."
+                  : "⏳ Round starting soon..."}
+              </span>
+            </div>
+          )}
+
+          {/* Max bets placed messages */}
+          {colorBetsMaxed && isBetting && betMode === "color" && (
+            <div
+              className="flex items-center justify-center py-2 rounded-lg"
+              style={{
+                background: "oklch(0.60 0.22 25 / 0.1)",
+                border: "1px solid oklch(0.60 0.22 25 / 0.3)",
+              }}
+              data-ocid="bet.color_maxed.error_state"
+            >
+              <span
+                className="text-xs font-semibold"
+                style={{ color: "oklch(0.70 0.18 25)" }}
+              >
+                🚫 Max bets placed this round (2/2)
+              </span>
+            </div>
+          )}
+          {sizeBetsMaxed && isBetting && betMode === "size" && (
+            <div
+              className="flex items-center justify-center py-2 rounded-lg"
+              style={{
+                background: "oklch(0.60 0.22 25 / 0.1)",
+                border: "1px solid oklch(0.60 0.22 25 / 0.3)",
+              }}
+              data-ocid="bet.size_maxed.error_state"
+            >
+              <span
+                className="text-xs font-semibold"
+                style={{ color: "oklch(0.70 0.18 25)" }}
+              >
+                🚫 Max bets placed this round (2/2)
+              </span>
+            </div>
+          )}
+
+          {/* Locked color/size warning */}
+          {betMode === "color" &&
+            lockedColor &&
+            isBetting &&
+            !colorBetsMaxed && (
+              <div
+                className="flex items-center justify-center py-2 rounded-lg"
+                style={{
+                  background: "oklch(0.75 0.18 60 / 0.1)",
+                  border: "1px solid oklch(0.75 0.18 60 / 0.3)",
+                }}
+              >
+                <span
+                  className="text-xs font-semibold"
+                  style={{ color: "oklch(0.80 0.16 60)" }}
+                >
+                  ⚠️ You can only bet on{" "}
+                  <span className="uppercase font-black">{lockedColor}</span>{" "}
+                  again this round
+                </span>
+              </div>
+            )}
+          {betMode === "size" && lockedSize && isBetting && !sizeBetsMaxed && (
+            <div
+              className="flex items-center justify-center py-2 rounded-lg"
+              style={{
+                background: "oklch(0.75 0.18 60 / 0.1)",
+                border: "1px solid oklch(0.75 0.18 60 / 0.3)",
+              }}
+            >
+              <span
+                className="text-xs font-semibold"
+                style={{ color: "oklch(0.80 0.16 60)" }}
+              >
+                ⚠️ You can only bet on{" "}
+                <span className="uppercase font-black">{lockedSize}</span> again
+                this round
+              </span>
+            </div>
+          )}
+
+          {alreadyBet && isBetting && (
+            <div
+              className="flex items-center justify-center py-2 rounded-lg"
+              style={{
+                background: "oklch(0.85 0.2 168 / 0.1)",
+                border: "1px solid oklch(0.85 0.2 168 / 0.3)",
+              }}
+              data-ocid="bet.placed.success_state"
+            >
+              <span className="text-xs font-semibold text-neon-green">
+                ✓ Bet placed this round
+              </span>
+            </div>
+          )}
+
+          {isBetting && !alreadyBet && !colorBetsMaxed && !sizeBetsMaxed && (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {AMOUNT_CHIPS.map((chip) => (
+                  <button
+                    type="button"
+                    key={chip}
+                    data-ocid={`bet.amount_${chip}.button`}
+                    onClick={() => {
+                      setAmount(chip);
+                      setCustomAmount("");
+                    }}
+                    className={[
+                      "px-3 py-1.5 rounded-lg text-xs font-bold transition-all border",
+                      amount === chip && !customAmount
+                        ? "border-neon-green/70 text-neon-green bg-neon-green/10"
+                        : "border-border/40 text-muted-foreground hover:border-border",
+                    ].join(" ")}
+                  >
+                    {chip}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  data-ocid="bet.max.button"
+                  onClick={() => {
+                    const maxVal = Number(userCoins);
+                    setAmount(maxVal);
+                    setCustomAmount(String(maxVal));
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-border/40 text-muted-foreground hover:border-border transition-all"
+                >
+                  MAX
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="Custom amount..."
+                  value={customAmount}
+                  onChange={(e) => setCustomAmount(e.target.value)}
+                  data-ocid="bet.amount.input"
+                  className="text-sm bg-muted/30 border-border/40 text-foreground"
+                />
+              </div>
+
+              <Button
+                onClick={handlePlaceBet}
+                disabled={!canBet || placeBet.isPending}
+                data-ocid="bet.submit.button"
+                className="w-full font-bold text-sm py-5 btn-gradient text-background hover:opacity-90 transition-all disabled:opacity-40"
+              >
+                {placeBet.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Placing
+                    Bet...
+                  </>
+                ) : (
+                  betLabel
+                )}
+              </Button>
+            </>
+          )}
         </>
       )}
     </div>

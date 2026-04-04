@@ -8,6 +8,7 @@ interface ColorCardProps {
   isWinner: boolean;
   isReveal: boolean;
   disabled: boolean;
+  hasApprovedDeposit?: boolean;
   onClick: () => void;
 }
 
@@ -19,6 +20,7 @@ export function ColorCard({
   isWinner,
   isReveal,
   disabled,
+  hasApprovedDeposit = true,
   onClick,
 }: ColorCardProps) {
   const cfg = getColorConfig(color);
@@ -28,7 +30,7 @@ export function ColorCard({
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || !hasApprovedDeposit}
       data-ocid={`trade.${color}_card.button`}
       className={[
         "relative flex flex-col items-center justify-center gap-1.5 rounded-xl p-4 border-2 transition-all duration-200 w-full",

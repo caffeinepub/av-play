@@ -2,6 +2,7 @@ import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserRole } from "../backend.d";
 import { useActor } from "./useActor";
+import { useInternetIdentity } from "./useInternetIdentity";
 
 export function useGameState() {
   const { actor, isFetching } = useActor();
@@ -316,6 +317,21 @@ export function useAdjustUserCoins() {
   });
 }
 
+export function useSetUserCoins() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      user,
+      amount,
+    }: { user: Principal; amount: bigint }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).setUserCoins(user, amount);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["allUserHoldings"] }),
+  });
+}
+
 export function useSpinWheel() {
   const { actor } = useActor();
   const qc = useQueryClient();
@@ -341,6 +357,44 @@ export function useMarkWithdrawalProcessed() {
   });
 }
 
+export function useCallerDepositRequests() {
+  const { actor, isFetching } = useActor();
+  const { identity } = useInternetIdentity();
+  return useQuery({
+    queryKey: ["callerDepositRequests", identity?.getPrincipal().toString()],
+    queryFn: async () => {
+      if (!actor || !identity) return [];
+      try {
+        const all = await actor.getAllDepositRequests();
+        const callerPrincipal = identity.getPrincipal().toString();
+        return all.filter((r) => r.user.toString() === callerPrincipal);
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching && !!identity,
+    refetchInterval: 5000,
+  });
+}
+
+export function useCallerWithdrawalRequests() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["callerWithdrawalRequests"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        const profile = await actor.getCallerUserProfile();
+        return profile?.withdrawalRequests ?? [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 5000,
+  });
+}
+
 export function useHasFirstDepositBonus() {
   const { actor, isFetching } = useActor();
   return useQuery({
@@ -354,5 +408,188 @@ export function useHasFirstDepositBonus() {
       }
     },
     enabled: !!actor && !isFetching,
+  });
+}
+
+export function useCurrentRoundBets() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["currentRoundBets"],
+    queryFn: async () => {
+      if (!actor) return { red: 0n, green: 0n, violet: 0n };
+      try {
+        return await actor.getCurrentRoundBets();
+      } catch {
+        return { red: 0n, green: 0n, violet: 0n };
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 2000,
+  });
+}
+
+// ─── New hooks for super admin features ───────────────────────────────────────
+
+export function useCallerAdminRole() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["callerAdminRole"],
+    queryFn: async () => {
+      if (!actor) return "user";
+      try {
+        return await (actor as any).getCallerAdminRole();
+      } catch {
+        return "user";
+      }
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 30_000,
+  });
+}
+
+export function useForceResultStatus() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["forceResultStatus"],
+    queryFn: async () => {
+      if (!actor)
+        return { forcedColor: null, forcedSize: null, isActive: false };
+      try {
+        return await (actor as any).getForceResultStatus();
+      } catch {
+        return { forcedColor: null, forcedSize: null, isActive: false };
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 3000,
+  });
+}
+
+export function useForceResult() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ color, size }: { color: string; size: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).forceResult(color, size);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["forceResultStatus"] });
+      qc.invalidateQueries({ queryKey: ["gameState"] });
+    },
+  });
+}
+
+export function useClearForcedResult() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).clearForcedResult();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["forceResultStatus"] });
+      qc.invalidateQueries({ queryKey: ["gameState"] });
+    },
+  });
+}
+
+export function useAdminBalance(adminPrincipal: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["adminBalance", adminPrincipal?.toString()],
+    queryFn: async () => {
+      if (!actor || !adminPrincipal) return 0n;
+      try {
+        return await (actor as any).getAdminBalance(adminPrincipal);
+      } catch {
+        return 0n;
+      }
+    },
+    enabled: !!actor && !isFetching && !!adminPrincipal,
+    refetchInterval: 5000,
+  });
+}
+
+export function useAssignCoinsToAdmin() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      admin,
+      amount,
+    }: { admin: Principal; amount: bigint }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).assignCoinsToAdmin(admin, amount);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["adminBalance"] });
+    },
+  });
+}
+
+export function useAssignAdminRole() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ user, role }: { user: Principal; role: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).assignAdminRole(user, role);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["callerAdminRole"] });
+    },
+  });
+}
+
+export function useTransactionLogs() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["transactionLogs"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await (actor as any).getTransactionLogs();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 10000,
+  });
+}
+
+export function useHasApprovedDeposit() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["hasApprovedDeposit"],
+    queryFn: async () => {
+      if (!actor) return false;
+      try {
+        return await (actor as any).hasApprovedDeposit();
+      } catch {
+        return false;
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 5000,
+  });
+}
+
+export function useMyAdminBalance() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["myAdminBalance"],
+    queryFn: async () => {
+      if (!actor) return 0n;
+      try {
+        return await (actor as any).getMyAdminBalance();
+      } catch {
+        return 0n;
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 5000,
   });
 }

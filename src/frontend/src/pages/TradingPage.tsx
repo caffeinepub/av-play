@@ -17,7 +17,11 @@ import { type HistoryEntry, RoundHistory } from "../components/RoundHistory";
 import { WalletPanel } from "../components/WalletPanel";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
-import { useGameState, useUserProfile } from "../hooks/useQueries";
+import {
+  useGameState,
+  useHasApprovedDeposit,
+  useUserProfile,
+} from "../hooks/useQueries";
 import {
   getPhaseFromTimeRemaining,
   getResultForRound,
@@ -26,11 +30,11 @@ import {
 } from "../utils/gameUtils";
 import { playLoseSound, playWinChime } from "../utils/sound";
 
-type PendingBet = {
+type AccumulatedBet = {
   roundId: number;
   color: string;
-  amount: number;
-  mode: "color" | "size";
+  totalAmount: number;
+  count: number;
 };
 
 type WinPopup = {
@@ -39,12 +43,18 @@ type WinPopup = {
   color: string;
 };
 
+type LossPopup = {
+  resultColor: string;
+  resultSize: string;
+};
+
 export function TradingPage() {
   const { clear, identity } = useInternetIdentity();
   const { actor } = useActor();
   const queryClient = useQueryClient();
   const gameState = useGameState();
   const userProfile = useUserProfile();
+  const hasApprovedDeposit = useHasApprovedDeposit();
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(() =>
     getUnifiedTimeRemaining(),
@@ -53,9 +63,16 @@ export function TradingPage() {
   const [activityOpen, setActivityOpen] = useState(false);
   const [roundHistory, setRoundHistory] = useState<HistoryEntry[]>([]);
   const [winPopup, setWinPopup] = useState<WinPopup | null>(null);
+  const [lossPopup, setLossPopup] = useState<LossPopup | null>(null);
   const prevRoundIdRef = useRef<number | null>(null);
-  const pendingBetRef = useRef<PendingBet | null>(null);
-  const [pendingBet, setPendingBet] = useState<PendingBet | null>(null);
+
+  // Accumulated bets per round (color + size tracked separately)
+  const [colorBetThisRound, setColorBetThisRound] =
+    useState<AccumulatedBet | null>(null);
+  const [sizeBetThisRound, setSizeBetThisRound] =
+    useState<AccumulatedBet | null>(null);
+  const colorBetRef = useRef<AccumulatedBet | null>(null);
+  const sizeBetRef = useRef<AccumulatedBet | null>(null);
 
   // Keep live multipliers in a ref so the interval closure always has fresh values
   const multipliersRef = useRef({ red: 2, green: 2, violet: 4.5 });
@@ -106,49 +123,86 @@ export function TradingPage() {
         });
         setSelectedColor(null);
 
-        // Win/loss detection using ref (fresh inside closure)
-        const bet = pendingBetRef.current;
-        if (bet && bet.roundId === prevRound) {
-          let won = false;
-          let multiplier = 0;
-          if (bet.mode === "size") {
-            const betSize = bet.color === "green" ? "BIG" : "SMALL";
-            won = betSize === result.size;
-            // BIG/SMALL always 2x (no separate multiplier config)
-            multiplier = 2;
-          } else {
-            won = bet.color === result.color;
-            // Use live multipliers from ref — never hardcoded
-            const m = multipliersRef.current;
-            multiplier =
-              bet.color === "violet"
-                ? m.violet
-                : bet.color === "green"
-                  ? m.green
-                  : m.red;
-          }
-          // Math.round avoids truncation of fractional payouts (e.g. 11 × 4.5 = 49.5 → 50)
-          const winAmount = Math.round(bet.amount * multiplier);
-          if (won) {
+        const m = multipliersRef.current;
+        let wonColor = false;
+        let wonSize = false;
+        let colorWinAmount = 0;
+        let sizeWinAmount = 0;
+        let colorMultiplier = 2;
+        let sizeMultiplier = 2;
+
+        // Evaluate color bet
+        const colorBet = colorBetRef.current;
+        if (colorBet && colorBet.roundId === prevRound) {
+          wonColor = colorBet.color === result.color;
+          colorMultiplier =
+            colorBet.color === "violet"
+              ? m.violet
+              : colorBet.color === "green"
+                ? m.green
+                : m.red;
+          colorWinAmount = Math.round(colorBet.totalAmount * colorMultiplier);
+          if (wonColor) {
             actor
-              ?.depositCoins(BigInt(winAmount))
+              ?.depositCoins(BigInt(colorWinAmount))
               .then(() => {
                 queryClient.invalidateQueries({ queryKey: ["userProfile"] });
               })
               .catch(() => {});
-            playWinChime();
-            toast.success(`🎉 You WON! +${winAmount} coins (${multiplier}x)`);
-            setWinPopup({ amount: winAmount, multiplier, color: bet.color });
-            setTimeout(() => setWinPopup(null), 3000);
-          } else {
-            playLoseSound();
-            toast.error(
-              `😞 You lost. Result was ${result.color.toUpperCase()} / ${result.size}`,
-            );
           }
-          pendingBetRef.current = null;
-          setPendingBet(null);
         }
+
+        // Evaluate size bet
+        const sizeBet = sizeBetRef.current;
+        if (sizeBet && sizeBet.roundId === prevRound) {
+          const betSize = sizeBet.color === "green" ? "BIG" : "SMALL";
+          wonSize = betSize === result.size;
+          sizeMultiplier = 2;
+          sizeWinAmount = Math.round(sizeBet.totalAmount * sizeMultiplier);
+          if (wonSize) {
+            actor
+              ?.depositCoins(BigInt(sizeWinAmount))
+              .then(() => {
+                queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+              })
+              .catch(() => {});
+          }
+        }
+
+        // Show result popups
+        const hadColorBet = colorBet && colorBet.roundId === prevRound;
+        const hadSizeBet = sizeBet && sizeBet.roundId === prevRound;
+
+        if (wonColor || wonSize) {
+          const totalWin = colorWinAmount + sizeWinAmount;
+          const mult = wonColor ? colorMultiplier : sizeMultiplier;
+          const winColor = wonColor
+            ? colorBet!.color
+            : sizeBet!.color === "green"
+              ? "green"
+              : "red";
+          playWinChime();
+          toast.success(`🎉 You WON! +${totalWin} coins`);
+          setWinPopup({ amount: totalWin, multiplier: mult, color: winColor });
+          setTimeout(() => setWinPopup(null), 3000);
+        } else if (hadColorBet || hadSizeBet) {
+          // Lost
+          playLoseSound();
+          toast.error(
+            `😞 You lost. Result was ${result.color.toUpperCase()} / ${result.size}`,
+          );
+          setLossPopup({
+            resultColor: result.color,
+            resultSize: result.size,
+          });
+          setTimeout(() => setLossPopup(null), 2500);
+        }
+
+        // Clear bets for next round
+        colorBetRef.current = null;
+        sizeBetRef.current = null;
+        setColorBetThisRound(null);
+        setSizeBetThisRound(null);
       }
       prevRoundIdRef.current = currentRound;
     }, 1000);
@@ -163,16 +217,23 @@ export function TradingPage() {
   const currentRoundId = getRoundNumber();
   const currentResult = getResultForRound(currentRoundId);
 
-  const alreadyBet =
-    profile?.betHistory?.some(() => {
-      const currentRound = backendRoundHistory.find(
-        (r) => r.roundId === gs?.currentRoundId,
-      );
-      if (!currentRound) return false;
-      return currentRound.bets.some(
-        (bet) => bet[0].toString() === identity?.getPrincipal().toString(),
-      );
-    }) ?? false;
+  // Color card disabled logic: disabled if locked to a different color and already bet once
+  const lockedColor =
+    colorBetThisRound?.roundId === currentRoundId
+      ? colorBetThisRound.color
+      : null;
+  const lockedSize =
+    sizeBetThisRound?.roundId === currentRoundId
+      ? sizeBetThisRound.color === "green"
+        ? "big"
+        : "small"
+      : null;
+  const colorBetCount =
+    colorBetThisRound?.roundId === currentRoundId ? colorBetThisRound.count : 0;
+  const sizeBetCount =
+    sizeBetThisRound?.roundId === currentRoundId ? sizeBetThisRound.count : 0;
+
+  const alreadyBet = colorBetCount >= 2 && sizeBetCount >= 2;
 
   const currentRound = backendRoundHistory.find(
     (r) => r.roundId === gs?.currentRoundId,
@@ -197,8 +258,44 @@ export function TradingPage() {
   const winColorHex = (c: string) =>
     c === "red" ? "#FF4A4A" : c === "green" ? "#33F5A4" : "#B455FF";
 
-  // Suppress unused warning — pendingBet state used to trigger re-render when needed
-  void pendingBet;
+  const handleBetPlaced = (
+    color: string,
+    amount: number,
+    mode: "color" | "size",
+  ) => {
+    const round = getRoundNumber();
+    if (mode === "color") {
+      const current = colorBetRef.current;
+      if (!current || current.roundId !== round) {
+        const newBet = { roundId: round, color, totalAmount: amount, count: 1 };
+        colorBetRef.current = newBet;
+        setColorBetThisRound(newBet);
+      } else if (current.count < 2) {
+        const updated = {
+          ...current,
+          totalAmount: current.totalAmount + amount,
+          count: current.count + 1,
+        };
+        colorBetRef.current = updated;
+        setColorBetThisRound(updated);
+      }
+    } else {
+      const current = sizeBetRef.current;
+      if (!current || current.roundId !== round) {
+        const newBet = { roundId: round, color, totalAmount: amount, count: 1 };
+        sizeBetRef.current = newBet;
+        setSizeBetThisRound(newBet);
+      } else if (current.count < 2) {
+        const updated = {
+          ...current,
+          totalAmount: current.totalAmount + amount,
+          count: current.count + 1,
+        };
+        sizeBetRef.current = updated;
+        setSizeBetThisRound(updated);
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col pb-24">
@@ -366,15 +463,31 @@ export function TradingPage() {
                   isSelected={selectedColor === color}
                   isWinner={phase === "reveal" && currentResult.color === color}
                   isReveal={phase === "reveal"}
+                  hasApprovedDeposit={hasApprovedDeposit.data ?? false}
                   disabled={
-                    phase !== "betting" || alreadyBet || timeRemaining <= 10
+                    !(hasApprovedDeposit.data ?? false) ||
+                    phase !== "betting" ||
+                    timeRemaining <= 10 ||
+                    colorBetCount >= 2 ||
+                    (lockedColor !== null &&
+                      color !== lockedColor &&
+                      colorBetCount >= 1)
                   }
-                  onClick={() =>
-                    phase === "betting" &&
-                    !alreadyBet &&
-                    timeRemaining > 10 &&
-                    setSelectedColor(color)
-                  }
+                  onClick={() => {
+                    if (
+                      (hasApprovedDeposit.data ?? false) &&
+                      phase === "betting" &&
+                      timeRemaining > 10 &&
+                      colorBetCount < 2 &&
+                      !(
+                        lockedColor !== null &&
+                        color !== lockedColor &&
+                        colorBetCount >= 1
+                      )
+                    ) {
+                      setSelectedColor(color);
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -385,11 +498,12 @@ export function TradingPage() {
               userCoins={profile?.coins ?? 0n}
               alreadyBet={alreadyBet}
               timeRemaining={timeRemaining}
-              onBetPlaced={(color, amount, mode) => {
-                const bet = { roundId: getRoundNumber(), color, amount, mode };
-                pendingBetRef.current = bet;
-                setPendingBet(bet);
-              }}
+              colorBetCount={colorBetCount}
+              sizeBetCount={sizeBetCount}
+              lockedColor={lockedColor}
+              lockedSize={lockedSize}
+              hasApprovedDeposit={hasApprovedDeposit.data ?? false}
+              onBetPlaced={handleBetPlaced}
             />
 
             <RoundHistory history={roundHistory} />
@@ -509,6 +623,116 @@ export function TradingPage() {
 
               {/* Tap to dismiss */}
               <p className="text-xs text-muted-foreground mt-2">
+                Tap anywhere to dismiss
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Loss Popup Overlay */}
+      <AnimatePresence>
+        {lossPopup && (
+          <motion.div
+            key="loss-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 flex items-center justify-center"
+            style={{
+              zIndex: 199,
+              background: "rgba(0,0,0,0.65)",
+              backdropFilter: "blur(4px)",
+            }}
+            onClick={() => setLossPopup(null)}
+            data-ocid="loss.modal"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: -10 }}
+              transition={{
+                type: "spring",
+                stiffness: 280,
+                damping: 24,
+                delay: 0.04,
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative flex flex-col items-center gap-3 rounded-3xl px-10 py-8 mx-6"
+              style={{
+                background: "oklch(0.09 0.018 240)",
+                border: "2px solid oklch(0.40 0.10 25 / 0.7)",
+                boxShadow:
+                  "0 0 30px oklch(0.40 0.12 25 / 0.35), 0 0 60px oklch(0.40 0.12 25 / 0.15)",
+                minWidth: 260,
+                maxWidth: 340,
+              }}
+            >
+              {/* Sad emoji */}
+              <motion.div
+                animate={{ rotate: [-5, 5, -5, 0] }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="text-6xl select-none"
+              >
+                😔
+              </motion.div>
+
+              <div
+                className="text-3xl font-black tracking-wider uppercase"
+                style={{ color: "oklch(0.70 0.14 25)" }}
+              >
+                Better Luck!
+              </div>
+
+              <div className="text-center space-y-1">
+                <p className="text-sm text-muted-foreground">Result was</p>
+                <div className="flex items-center justify-center gap-2">
+                  <span
+                    className="text-base font-black uppercase px-3 py-1 rounded-full"
+                    style={{
+                      background:
+                        lossPopup.resultColor === "red"
+                          ? "oklch(0.60 0.22 25 / 0.2)"
+                          : lossPopup.resultColor === "green"
+                            ? "oklch(0.85 0.2 168 / 0.15)"
+                            : "oklch(0.57 0.28 300 / 0.2)",
+                      color:
+                        lossPopup.resultColor === "red"
+                          ? "oklch(0.70 0.20 25)"
+                          : lossPopup.resultColor === "green"
+                            ? "oklch(0.85 0.2 168)"
+                            : "oklch(0.68 0.25 300)",
+                      border:
+                        lossPopup.resultColor === "red"
+                          ? "1px solid oklch(0.60 0.22 25 / 0.5)"
+                          : lossPopup.resultColor === "green"
+                            ? "1px solid oklch(0.85 0.2 168 / 0.4)"
+                            : "1px solid oklch(0.57 0.28 300 / 0.5)",
+                    }}
+                  >
+                    {lossPopup.resultColor === "red"
+                      ? "🔴"
+                      : lossPopup.resultColor === "green"
+                        ? "🟢"
+                        : "🟣"}{" "}
+                    {lossPopup.resultColor}
+                  </span>
+                  <span
+                    className="text-sm font-bold px-2 py-1 rounded-full"
+                    style={{
+                      background: "oklch(0.72 0.18 220 / 0.1)",
+                      color: "oklch(0.72 0.18 220)",
+                      border: "1px solid oklch(0.72 0.18 220 / 0.3)",
+                    }}
+                  >
+                    {lossPopup.resultSize === "BIG" ? "⬆️" : "⬇️"}{" "}
+                    {lossPopup.resultSize}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground mt-1">
                 Tap anywhere to dismiss
               </p>
             </motion.div>

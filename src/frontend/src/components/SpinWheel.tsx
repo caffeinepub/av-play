@@ -1,5 +1,5 @@
 import { motion, useAnimation } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import type { UserProfile } from "../backend.d";
 import { useSpinWheel } from "../hooks/useQueries";
@@ -28,8 +28,22 @@ interface SpinWheelProps {
   profile: UserProfile | null;
 }
 
-// The actual win prizes (index in PRIZES array: 0=9, 2=19, 4=29)
-const WIN_PRIZE_INDICES = [0, 2, 4]; // indices that correspond to 9, 19, 29
+/**
+ * Maps a won amount (9, 19, or 29) to its index in the PRIZES array.
+ * 9 → index 0, 19 → index 2, 29 → index 4
+ */
+function wonAmountToSegmentIndex(wonAmount: number): number {
+  switch (wonAmount) {
+    case 9:
+      return 0;
+    case 19:
+      return 2;
+    case 29:
+      return 4;
+    default:
+      return 0; // fallback to first win segment
+  }
+}
 
 function canSpin(lastSpinTime: bigint): boolean {
   const lastMs = Number(lastSpinTime) / 1_000_000;
@@ -60,45 +74,47 @@ export function SpinWheel({ profile }: SpinWheelProps) {
     setIsSpinning(true);
     setWonAmount(null);
 
-    // Determine a random target win prize index for animation (visual only)
-    // Pick a random win slot index (0, 2, or 4 in PRIZES)
-    const targetPrizeIndex = WIN_PRIZE_INDICES[Math.floor(Math.random() * 3)];
-    // Calculate angle so pointer lands on targetPrizeIndex segment
-    // Segments are laid out starting from top (0deg), going clockwise
-    // Center of segment i is at: i * SEGMENT_ANGLE + SEGMENT_ANGLE/2
-    const segmentCenter = targetPrizeIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
-    // We want the wheel to land with pointer (at top = 0deg) pointing at segmentCenter
-    // So wheel needs to rotate: 360 - segmentCenter (to bring that segment to top)
-    const targetAngle = 360 - segmentCenter;
-    // Add 5 full rotations for drama
-    const fullSpins = 5 * 360;
-    const finalRotation =
-      currentRotationRef.current +
-      fullSpins +
-      targetAngle -
-      (currentRotationRef.current % 360);
-    currentRotationRef.current = finalRotation;
-
-    // Start the spin animation
-    controls.start({
-      rotate: finalRotation,
-      transition: { duration: 4, ease: [0.2, 0, 0.1, 1] },
-    });
-
     try {
-      const won = await spinMutation.mutateAsync();
-      const wonNum = Number(won);
-      setTimeout(() => {
-        setWonAmount(wonNum);
-        setIsSpinning(false);
-        toast.success(`🎰 You won ${wonNum} coins from the spin!`);
-      }, 4200);
+      // ── Step 1: Call backend FIRST to get the actual won amount ──────────
+      const wonBigInt = await spinMutation.mutateAsync();
+      const won = Number(wonBigInt);
+
+      // ── Step 2: Map the backend result to the correct segment index ───────
+      const targetSegmentIndex = wonAmountToSegmentIndex(won);
+
+      // ── Step 3: Calculate the exact wheel rotation for that segment ───────
+      // Segments are indexed 0..5 starting at the top going clockwise.
+      // The center of segment i sits at: i * SEGMENT_ANGLE + SEGMENT_ANGLE / 2
+      // The pointer is fixed at the top (0°). To land the pointer on the
+      // center of segment `targetSegmentIndex` we rotate the wheel so that
+      // centre is at 0°:
+      //   targetAngle = 360 - (targetSegmentIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2)
+      const segmentCenter =
+        targetSegmentIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
+      const targetAngle = (360 - segmentCenter + 360) % 360;
+
+      // Add 5 full spins for visual drama
+      const fullSpins = 5 * 360;
+      const base = currentRotationRef.current;
+      const currentAngleMod = base % 360;
+      const delta = (targetAngle - currentAngleMod + 360) % 360;
+      const finalRotation = base + fullSpins + delta;
+      currentRotationRef.current = finalRotation;
+
+      // ── Step 4: Animate to the final rotation ────────────────────────────
+      await controls.start({
+        rotate: finalRotation,
+        transition: { duration: 4, ease: [0.2, 0, 0.1, 1] },
+      });
+
+      // ── Step 5: Show the result ───────────────────────────────────────────
+      setWonAmount(won);
+      setIsSpinning(false);
+      toast.success(`🎰 You won ${won} coins from the spin!`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      setTimeout(() => {
-        setIsSpinning(false);
-        toast.error(msg || "Spin failed");
-      }, 4200);
+      setIsSpinning(false);
+      toast.error(msg || "Spin failed");
     }
   };
 
@@ -248,6 +264,7 @@ export function SpinWheel({ profile }: SpinWheelProps) {
           whileTap={{ scale: 0.95 }}
           onClick={handleSpin}
           disabled={isSpinning}
+          data-ocid="spin.button"
           className="w-full py-3 rounded-xl font-black text-sm transition-opacity"
           style={{
             background: isSpinning

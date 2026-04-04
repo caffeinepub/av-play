@@ -130,10 +130,12 @@ export function getColorConfig(color: string) {
   }
 }
 
+/**
+ * Always returns the full exact number — never abbreviates with K or M.
+ * Example: 1250 → "1250", 10000 → "10000"
+ */
 export function formatCoins(n: bigint | number): string {
   const val = typeof n === "bigint" ? Number(n) : n;
-  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
-  if (val >= 1_000) return `${(val / 1_000).toFixed(1)}K`;
   return val.toString();
 }
 

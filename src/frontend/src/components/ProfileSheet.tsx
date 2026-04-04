@@ -26,7 +26,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { UserProfile } from "../backend.d";
 import {
+  useCallerDepositRequests,
+  useCallerWithdrawalRequests,
   useClaimBonus,
+  useHasFirstDepositBonus,
   usePaymentMethod,
   useRequestWithdrawal,
   useSubmitDepositRequest,
@@ -49,6 +52,9 @@ export function ProfileSheet({
   const [activeTab, setActiveTab] = useState<"wallet" | "history" | "withdraw">(
     "wallet",
   );
+  const [activeHistoryTab, setActiveHistoryTab] = useState<
+    "deposits" | "withdrawals" | "pending"
+  >("deposits");
   const [depositStep, setDepositStep] = useState<
     "enter" | "pay" | "confirm" | "submitted"
   >("enter");
@@ -98,6 +104,9 @@ export function ProfileSheet({
   const withdraw = useRequestWithdrawal();
   const claimBonus = useClaimBonus();
   const paymentMethod = usePaymentMethod();
+  const callerDeposits = useCallerDepositRequests();
+  const callerWithdrawals = useCallerWithdrawalRequests();
+  const { data: hasReceivedBonus } = useHasFirstDepositBonus();
 
   const upiId = paymentMethod.data?.upiId ?? "6205006521@okbizaxis";
   const qrImageUrl =
@@ -107,12 +116,12 @@ export function ProfileSheet({
   const coins = profile?.coins ?? 0n;
   const streak = profile?.dailyStreak ?? 0n;
   const bonusAvailable = profile ? canClaimBonus(profile.lastBonusTime) : false;
-  const betHistory = profile?.betHistory ?? [];
   const withdrawalRequests = profile?.withdrawalRequests ?? [];
 
   const parsedAmount = Number.parseInt(depositAmount, 10);
   const isValidAmount = !Number.isNaN(parsedAmount) && parsedAmount > 0;
-  const qualifiesForBonus = isValidAmount && parsedAmount >= 100;
+  const qualifiesForBonus =
+    isValidAmount && parsedAmount >= 100 && !hasReceivedBonus;
   const coinsToCredit = isValidAmount ? parsedAmount : 0;
 
   const handleCopyUpi = () => {
@@ -336,22 +345,24 @@ export function ProfileSheet({
 
                   {depositStep === "enter" && (
                     <>
-                      <div
-                        className="rounded-lg p-2.5 text-xs flex items-start gap-2"
-                        style={{
-                          background: "oklch(0.57 0.28 300 / 0.1)",
-                          border: "1px solid oklch(0.57 0.28 300 / 0.3)",
-                        }}
-                      >
-                        <Gift
-                          className="w-3.5 h-3.5 shrink-0 mt-0.5"
-                          style={{ color: "oklch(0.68 0.25 300)" }}
-                        />
-                        <span style={{ color: "oklch(0.75 0.18 300)" }}>
-                          Deposit ₹100+ and get <strong>100 bonus coins</strong>
-                          !
-                        </span>
-                      </div>
+                      {!hasReceivedBonus && (
+                        <div
+                          className="rounded-lg p-2.5 text-xs flex items-start gap-2"
+                          style={{
+                            background: "oklch(0.57 0.28 300 / 0.1)",
+                            border: "1px solid oklch(0.57 0.28 300 / 0.3)",
+                          }}
+                        >
+                          <Gift
+                            className="w-3.5 h-3.5 shrink-0 mt-0.5"
+                            style={{ color: "oklch(0.68 0.25 300)" }}
+                          />
+                          <span style={{ color: "oklch(0.75 0.18 300)" }}>
+                            Deposit ₹100+ and get{" "}
+                            <strong>100 bonus coins</strong>!
+                          </span>
+                        </div>
+                      )}
                       <Input
                         type="number"
                         placeholder="Amount in ₹..."
@@ -537,74 +548,339 @@ export function ProfileSheet({
 
             {/* TRANSACTIONS TAB */}
             {activeTab === "history" && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground mb-3">
-                  Your bet history ({betHistory.length} bets)
-                </p>
-                {betHistory.length === 0 ? (
-                  <div className="text-center py-10">
-                    <p className="text-muted-foreground text-sm">
-                      No bets placed yet
-                    </p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">
-                      Start playing to see your history here
-                    </p>
-                  </div>
-                ) : (
-                  [...betHistory].reverse().map((bet, i) => {
-                    const colorHex =
-                      bet.betColor === "red"
-                        ? "oklch(0.60 0.22 25)"
-                        : bet.betColor === "green"
-                          ? "oklch(0.85 0.2 168)"
-                          : "oklch(0.57 0.28 300)";
-                    const betDate = new Date(Number(bet.betTime) / 1_000_000);
-                    return (
-                      <div
-                        key={`bet-${i}-${String(bet.betTime)}`}
-                        className="flex items-center justify-between p-3 rounded-xl"
+              <div className="space-y-3">
+                {/* Sub-tab bar */}
+                <div className="flex gap-1">
+                  {(["deposits", "withdrawals", "pending"] as const).map(
+                    (htab) => (
+                      <button
+                        type="button"
+                        key={htab}
+                        onClick={() => setActiveHistoryTab(htab)}
+                        className="flex-1 py-1.5 text-[10px] font-semibold uppercase tracking-wide rounded-lg transition-all"
                         style={{
-                          background: "oklch(0.11 0.02 240 / 0.8)",
-                          border: "1px solid oklch(0.25 0.04 240 / 0.5)",
+                          background:
+                            activeHistoryTab === htab
+                              ? "oklch(0.57 0.28 300 / 0.15)"
+                              : "transparent",
+                          border:
+                            activeHistoryTab === htab
+                              ? "1px solid oklch(0.57 0.28 300 / 0.4)"
+                              : "1px solid transparent",
+                          color:
+                            activeHistoryTab === htab
+                              ? "oklch(0.68 0.25 300)"
+                              : "oklch(0.65 0.02 240)",
                         }}
                       >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                            style={{
-                              background: `${colorHex} / 0.15`,
-                              border: `1px solid ${colorHex}`,
-                            }}
-                          >
-                            <TrendingUp
-                              className="w-4 h-4"
-                              style={{ color: colorHex }}
-                            />
-                          </div>
-                          <div>
-                            <p
-                              className="text-sm font-bold capitalize"
-                              style={{ color: colorHex }}
+                        {htab === "deposits"
+                          ? "Deposits"
+                          : htab === "withdrawals"
+                            ? "Withdrawals"
+                            : "Pending"}
+                      </button>
+                    ),
+                  )}
+                </div>
+
+                {/* DEPOSITS sub-tab */}
+                {activeHistoryTab === "deposits" && (
+                  <div className="space-y-2">
+                    {callerDeposits.isLoading ? (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        Loading...
+                      </div>
+                    ) : (callerDeposits.data ?? []).length === 0 ? (
+                      <div className="text-center py-10">
+                        <p className="text-muted-foreground text-sm">
+                          No deposits yet
+                        </p>
+                      </div>
+                    ) : (
+                      [...(callerDeposits.data ?? [])]
+                        .sort((a, b) => Number(b.requestTime - a.requestTime))
+                        .map((req, i) => {
+                          const date = new Date(
+                            Number(req.requestTime) / 1_000_000,
+                          );
+                          const status = req.approved ? "Approved" : "Pending";
+                          const statusColor = req.approved
+                            ? "oklch(0.85 0.2 168)"
+                            : "oklch(0.75 0.18 60)";
+                          return (
+                            <div
+                              key={`dep-${String(req.index)}-${i}`}
+                              className="flex items-center justify-between p-3 rounded-xl"
+                              style={{
+                                background: "oklch(0.11 0.02 240 / 0.8)",
+                                border: "1px solid oklch(0.25 0.04 240 / 0.5)",
+                              }}
                             >
-                              {bet.betColor}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">
-                              {betDate.toLocaleString()}
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                                  style={{
+                                    background: "oklch(0.85 0.2 168 / 0.1)",
+                                    border:
+                                      "1px solid oklch(0.85 0.2 168 / 0.4)",
+                                  }}
+                                >
+                                  <ArrowDownCircle className="w-4 h-4 text-neon-green" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-neon-green">
+                                    +{Number(req.amount)}
+                                    {Number(req.bonusAmount) > 0
+                                      ? ` (+${Number(req.bonusAmount)} bonus)`
+                                      : ""}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {date.toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                              <span
+                                className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                style={{
+                                  background: `${statusColor}22`,
+                                  color: statusColor,
+                                  border: `1px solid ${statusColor}55`,
+                                }}
+                              >
+                                {status}
+                              </span>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                )}
+
+                {/* WITHDRAWALS sub-tab */}
+                {activeHistoryTab === "withdrawals" && (
+                  <div className="space-y-2">
+                    {callerWithdrawals.isLoading ? (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        Loading...
+                      </div>
+                    ) : (callerWithdrawals.data ?? []).length === 0 ? (
+                      <div className="text-center py-10">
+                        <p className="text-muted-foreground text-sm">
+                          No withdrawals yet
+                        </p>
+                      </div>
+                    ) : (
+                      [...(callerWithdrawals.data ?? [])]
+                        .sort((a, b) => Number(b.requestTime - a.requestTime))
+                        .map((req, i) => {
+                          const date = new Date(
+                            Number(req.requestTime) / 1_000_000,
+                          );
+                          const status = req.processed
+                            ? "Processed"
+                            : "Pending";
+                          const statusColor = req.processed
+                            ? "oklch(0.85 0.2 168)"
+                            : "oklch(0.75 0.18 60)";
+                          return (
+                            <div
+                              key={`wd-${i}-${String(req.requestTime)}`}
+                              className="flex items-center justify-between p-3 rounded-xl"
+                              style={{
+                                background: "oklch(0.11 0.02 240 / 0.8)",
+                                border: "1px solid oklch(0.25 0.04 240 / 0.5)",
+                              }}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                                  style={{
+                                    background: "oklch(0.60 0.22 25 / 0.1)",
+                                    border:
+                                      "1px solid oklch(0.60 0.22 25 / 0.4)",
+                                  }}
+                                >
+                                  <ArrowUpCircle
+                                    className="w-4 h-4"
+                                    style={{
+                                      color: "oklch(0.70 0.18 25)",
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <p
+                                    className="text-sm font-bold"
+                                    style={{ color: "oklch(0.70 0.18 25)" }}
+                                  >
+                                    -{Number(req.amount)}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {date.toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                              <span
+                                className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                style={{
+                                  background: `${statusColor}22`,
+                                  color: statusColor,
+                                  border: `1px solid ${statusColor}55`,
+                                }}
+                              >
+                                {status}
+                              </span>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                )}
+
+                {/* PENDING sub-tab */}
+                {activeHistoryTab === "pending" &&
+                  (() => {
+                    const pendingDeposits = (callerDeposits.data ?? []).filter(
+                      (r) => !r.approved,
+                    );
+                    const pendingWithdrawals = (
+                      callerWithdrawals.data ?? []
+                    ).filter((r) => !r.processed);
+                    const hasPending =
+                      pendingDeposits.length > 0 ||
+                      pendingWithdrawals.length > 0;
+                    return (
+                      <div className="space-y-2">
+                        {!hasPending ? (
+                          <div className="text-center py-10">
+                            <p className="text-muted-foreground text-sm">
+                              No pending requests
                             </p>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-bold text-foreground">
-                            {formatCoins(bet.betAmount)}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            coins
-                          </p>
-                        </div>
+                        ) : (
+                          <>
+                            {[...pendingDeposits]
+                              .sort((a, b) =>
+                                Number(b.requestTime - a.requestTime),
+                              )
+                              .map((req, i) => {
+                                const date = new Date(
+                                  Number(req.requestTime) / 1_000_000,
+                                );
+                                return (
+                                  <div
+                                    key={`pdep-${String(req.index)}-${i}`}
+                                    className="flex items-center justify-between p-3 rounded-xl"
+                                    style={{
+                                      background: "oklch(0.11 0.02 240 / 0.8)",
+                                      border:
+                                        "1px solid oklch(0.75 0.18 60 / 0.4)",
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div
+                                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                                        style={{
+                                          background:
+                                            "oklch(0.85 0.2 168 / 0.1)",
+                                          border:
+                                            "1px solid oklch(0.85 0.2 168 / 0.4)",
+                                        }}
+                                      >
+                                        <ArrowDownCircle className="w-4 h-4 text-neon-green" />
+                                      </div>
+                                      <div>
+                                        <p className="text-sm font-bold text-neon-green">
+                                          Deposit +{Number(req.amount)}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">
+                                          {date.toLocaleString()}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <span
+                                      className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                      style={{
+                                        background:
+                                          "oklch(0.75 0.18 60 / 0.15)",
+                                        color: "oklch(0.75 0.18 60)",
+                                        border:
+                                          "1px solid oklch(0.75 0.18 60 / 0.4)",
+                                      }}
+                                    >
+                                      Pending
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            {[...pendingWithdrawals]
+                              .sort((a, b) =>
+                                Number(b.requestTime - a.requestTime),
+                              )
+                              .map((req, i) => {
+                                const date = new Date(
+                                  Number(req.requestTime) / 1_000_000,
+                                );
+                                return (
+                                  <div
+                                    key={`pwd-${i}-${String(req.requestTime)}`}
+                                    className="flex items-center justify-between p-3 rounded-xl"
+                                    style={{
+                                      background: "oklch(0.11 0.02 240 / 0.8)",
+                                      border:
+                                        "1px solid oklch(0.75 0.18 60 / 0.4)",
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div
+                                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                                        style={{
+                                          background:
+                                            "oklch(0.60 0.22 25 / 0.1)",
+                                          border:
+                                            "1px solid oklch(0.60 0.22 25 / 0.4)",
+                                        }}
+                                      >
+                                        <ArrowUpCircle
+                                          className="w-4 h-4"
+                                          style={{
+                                            color: "oklch(0.70 0.18 25)",
+                                          }}
+                                        />
+                                      </div>
+                                      <div>
+                                        <p
+                                          className="text-sm font-bold"
+                                          style={{
+                                            color: "oklch(0.70 0.18 25)",
+                                          }}
+                                        >
+                                          Withdrawal -{Number(req.amount)}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">
+                                          {date.toLocaleString()}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <span
+                                      className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                      style={{
+                                        background:
+                                          "oklch(0.75 0.18 60 / 0.15)",
+                                        color: "oklch(0.75 0.18 60)",
+                                        border:
+                                          "1px solid oklch(0.75 0.18 60 / 0.4)",
+                                      }}
+                                    >
+                                      Pending
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </>
+                        )}
                       </div>
                     );
-                  })
-                )}
+                  })()}
               </div>
             )}
 
@@ -869,7 +1145,11 @@ export function ProfileSheet({
                                   background: req.processed
                                     ? "oklch(0.85 0.2 168 / 0.1)"
                                     : "oklch(0.60 0.22 25 / 0.1)",
-                                  border: `1px solid ${req.processed ? "oklch(0.85 0.2 168 / 0.4)" : "oklch(0.60 0.22 25 / 0.4)"}`,
+                                  border: `1px solid ${
+                                    req.processed
+                                      ? "oklch(0.85 0.2 168 / 0.4)"
+                                      : "oklch(0.60 0.22 25 / 0.4)"
+                                  }`,
                                 }}
                               >
                                 <TrendingDown
@@ -897,7 +1177,11 @@ export function ProfileSheet({
                                   background: req.processed
                                     ? "oklch(0.85 0.2 168 / 0.15)"
                                     : "oklch(0.60 0.22 25 / 0.15)",
-                                  border: `1px solid ${req.processed ? "oklch(0.85 0.2 168 / 0.4)" : "oklch(0.60 0.22 25 / 0.4)"}`,
+                                  border: `1px solid ${
+                                    req.processed
+                                      ? "oklch(0.85 0.2 168 / 0.4)"
+                                      : "oklch(0.60 0.22 25 / 0.4)"
+                                  }`,
                                   color: req.processed
                                     ? "oklch(0.85 0.2 168)"
                                     : "oklch(0.70 0.18 25)",

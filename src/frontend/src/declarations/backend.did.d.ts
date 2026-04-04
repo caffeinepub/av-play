@@ -64,14 +64,26 @@ export interface PaymentMethod {
   'upiId' : string,
   'qrImageUrl' : string,
 }
+export interface TransactionLog {
+  'userId' : Principal,
+  'adminId' : Principal,
+  'amount' : bigint,
+  'logType' : string,
+  'timestamp' : bigint,
+}
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'adjustUserCoins' : ActorMethod<[Principal, bigint], undefined>,
   'approveDeposit' : ActorMethod<[bigint], undefined>,
+  'assignAdminRole' : ActorMethod<[Principal, string], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'assignCoinsToAdmin' : ActorMethod<[Principal, bigint], undefined>,
   'claimDailyBonus' : ActorMethod<[], undefined>,
+  'clearForcedResult' : ActorMethod<[], undefined>,
   'clearManualOverride' : ActorMethod<[], undefined>,
   'depositCoins' : ActorMethod<[bigint], undefined>,
+  'forceResult' : ActorMethod<[string, string], undefined>,
+  'getAdminBalance' : ActorMethod<[Principal], bigint>,
   'getAdminLogs' : ActorMethod<[], Array<string>>,
   'getAllDepositRequests' : ActorMethod<[], Array<DepositRequest>>,
   'getAllUserHoldings' : ActorMethod<[], Array<[Principal, bigint]>>,
@@ -79,13 +91,20 @@ export interface _SERVICE {
     [],
     Array<[Principal, WithdrawalRequest]>
   >,
+  'getCallerAdminRole' : ActorMethod<[], string>,
+  'getCallerDepositRequests' : ActorMethod<[], Array<DepositRequest>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getCallerWithdrawalRequests' : ActorMethod<[], Array<WithdrawalRequest>>,
   'getCurrentRoundBets' : ActorMethod<
     [],
     { 'red' : bigint, 'green' : bigint, 'violet' : bigint }
   >,
   'getCurrentRoundPhase' : ActorMethod<[], string>,
+  'getForceResultStatus' : ActorMethod<
+    [],
+    { 'forcedColor' : [] | [string], 'forcedSize' : [] | [string], 'isActive' : boolean }
+  >,
   'getGameState' : ActorMethod<
     [],
     {
@@ -96,10 +115,16 @@ export interface _SERVICE {
       'phase' : string,
       'multipliers' : MultiplierConfig,
       'phaseStartTimestamp' : Time,
+      'forcedColor' : [] | [string],
+      'forcedSize' : [] | [string],
     }
   >,
+  'getMyAdminBalance' : ActorMethod<[], bigint>,
   'getPaymentMethod' : ActorMethod<[], PaymentMethod>,
+  'getSuperAdminPrincipal' : ActorMethod<[], [] | [Principal]>,
+  'getTransactionLogs' : ActorMethod<[], Array<TransactionLog>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
+  'hasApprovedDeposit' : ActorMethod<[], boolean>,
   'hasFirstDepositBonus' : ActorMethod<[], boolean>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'markWithdrawalProcessed' : ActorMethod<[Principal, bigint], undefined>,
@@ -109,8 +134,10 @@ export interface _SERVICE {
   'setManualResultOverride' : ActorMethod<[string], undefined>,
   'setMultipliers' : ActorMethod<[number, number, number], undefined>,
   'setPaymentMethod' : ActorMethod<[string, string], undefined>,
-  'submitDepositRequest' : ActorMethod<[bigint], undefined>,
+  'setSuperAdmin' : ActorMethod<[Principal], undefined>,
+  'setUserCoins' : ActorMethod<[Principal, bigint], undefined>,
   'spinWheel' : ActorMethod<[], bigint>,
+  'submitDepositRequest' : ActorMethod<[bigint], undefined>,
   'toggleAutoResolve' : ActorMethod<[], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
