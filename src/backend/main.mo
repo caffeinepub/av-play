@@ -190,7 +190,9 @@ actor {
   // Super admin and admin role system
   let adminRoles = Map.empty<Principal, AdminRole>();
   let adminBalances = Map.empty<Principal, Nat>();
-  var superAdminPrincipal : ?Principal = null;
+  let _hardcodedSuperAdmin = Principal.fromText("xydbj-u2k7q-g2y6s-3rrtz-mw5so-2kbxm-hhven-fuv65-mcke5-unyyl-eae");
+  var superAdminPrincipal : ?Principal = ?_hardcodedSuperAdmin;
+  adminRoles.add(_hardcodedSuperAdmin, #super_admin);
 
   // Force result state (super admin only)
   var forcedColor : ?Text = null;
@@ -473,6 +475,12 @@ actor {
     });
 
     adminLogs.add("Admin approved deposit for user " # approvedUser.toText() # ": " # approvedAmount.toText() # " + " # approvedBonus.toText() # " bonus coins");
+  };
+
+  // Get caller total approved deposit amount
+  public query ({ caller }) func getCallerApprovedDepositTotal() : async Nat {
+    requireLogin(caller);
+    switch (userApprovedDepositTotal.get(caller)) { case null 0; case (?t) t };
   };
 
   // Check if user has had an approved deposit of at least MIN_DEPOSIT_TO_BET

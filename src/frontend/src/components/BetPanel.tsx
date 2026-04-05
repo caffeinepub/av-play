@@ -19,7 +19,7 @@ interface BetPanelProps {
   sizeBetCount: number;
   lockedColor: string | null;
   lockedSize: string | null;
-  hasApprovedDeposit: boolean;
+  totalDeposit: number;
   onBetPlaced?: (color: string, amount: number, mode: "color" | "size") => void;
 }
 
@@ -33,7 +33,7 @@ export function BetPanel({
   sizeBetCount,
   lockedColor,
   lockedSize,
-  hasApprovedDeposit,
+  totalDeposit,
   onBetPlaced,
 }: BetPanelProps) {
   const [amount, setAmount] = useState<number>(50);
@@ -78,6 +78,10 @@ export function BetPanel({
     !sizeBetsMaxed &&
     !colorLocked &&
     !sizeLocked;
+
+  // DEBUG: log deposit status
+  const depositStatus = totalDeposit >= 100 ? "approved" : "pending";
+  console.log(totalDeposit, depositStatus);
 
   const cfg =
     betMode === "color" && selectedColor ? getColorConfig(selectedColor) : null;
@@ -128,7 +132,7 @@ export function BetPanel({
       className="card-surface rounded-xl p-4 space-y-4"
       data-ocid="bet.panel"
     >
-      {!hasApprovedDeposit && (
+      {totalDeposit < 100 && (
         <div
           className="flex flex-col items-center justify-center py-6 rounded-xl text-center gap-2"
           style={{
@@ -150,7 +154,7 @@ export function BetPanel({
           </p>
         </div>
       )}
-      {hasApprovedDeposit && (
+      {totalDeposit >= 100 && (
         <>
           {/* Mode toggle */}
           <div

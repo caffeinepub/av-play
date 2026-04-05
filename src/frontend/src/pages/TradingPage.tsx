@@ -18,8 +18,8 @@ import { WalletPanel } from "../components/WalletPanel";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
+  useCallerApprovedDepositTotal,
   useGameState,
-  useHasApprovedDeposit,
   useUserProfile,
 } from "../hooks/useQueries";
 import {
@@ -54,7 +54,10 @@ export function TradingPage() {
   const queryClient = useQueryClient();
   const gameState = useGameState();
   const userProfile = useUserProfile();
-  const hasApprovedDeposit = useHasApprovedDeposit();
+  const approvedDepositTotal = useCallerApprovedDepositTotal();
+  const totalDeposit = approvedDepositTotal.data ?? 0;
+  const depositStatus = totalDeposit >= 100 ? "approved" : "pending";
+  console.log(totalDeposit, depositStatus);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(() =>
     getUnifiedTimeRemaining(),
@@ -463,9 +466,9 @@ export function TradingPage() {
                   isSelected={selectedColor === color}
                   isWinner={phase === "reveal" && currentResult.color === color}
                   isReveal={phase === "reveal"}
-                  hasApprovedDeposit={hasApprovedDeposit.data ?? false}
+                  totalDeposit={totalDeposit}
                   disabled={
-                    !(hasApprovedDeposit.data ?? false) ||
+                    totalDeposit < 100 ||
                     phase !== "betting" ||
                     timeRemaining <= 10 ||
                     colorBetCount >= 2 ||
@@ -475,7 +478,7 @@ export function TradingPage() {
                   }
                   onClick={() => {
                     if (
-                      (hasApprovedDeposit.data ?? false) &&
+                      totalDeposit >= 100 &&
                       phase === "betting" &&
                       timeRemaining > 10 &&
                       colorBetCount < 2 &&
@@ -502,7 +505,7 @@ export function TradingPage() {
               sizeBetCount={sizeBetCount}
               lockedColor={lockedColor}
               lockedSize={lockedSize}
-              hasApprovedDeposit={hasApprovedDeposit.data ?? false}
+              totalDeposit={totalDeposit}
               onBetPlaced={handleBetPlaced}
             />
 

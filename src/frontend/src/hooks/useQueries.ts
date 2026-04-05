@@ -593,3 +593,58 @@ export function useMyAdminBalance() {
     refetchInterval: 5000,
   });
 }
+
+export function useSetSuperAdmin() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      principal: import("@icp-sdk/core/principal").Principal,
+    ) => {
+      if (!actor) throw new Error("Not connected");
+      return await (actor as any).setSuperAdmin(principal);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["superAdminPrincipal"] });
+      queryClient.invalidateQueries({ queryKey: ["callerAdminRole"] });
+    },
+  });
+}
+
+export function useGetSuperAdminPrincipal() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["superAdminPrincipal"],
+    queryFn: async () => {
+      if (!actor) return null;
+      try {
+        const result = await (actor as any).getSuperAdminPrincipal();
+        // Returns ?Principal (optional) — unwrap
+        if (Array.isArray(result) && result.length > 0) return result[0];
+        return result ?? null;
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 10000,
+  });
+}
+
+export function useCallerApprovedDepositTotal() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["callerApprovedDepositTotal"],
+    queryFn: async () => {
+      if (!actor) return 0;
+      try {
+        const result = await (actor as any).getCallerApprovedDepositTotal();
+        return Number(result ?? 0);
+      } catch {
+        return 0;
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 5000,
+  });
+}
