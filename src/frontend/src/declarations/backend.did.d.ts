@@ -15,6 +15,14 @@ export interface Bet {
   'betTime' : Time,
   'betColor' : string,
 }
+export interface DepositRequest {
+  'bonusAmount' : bigint,
+  'user' : Principal,
+  'approved' : boolean,
+  'index' : bigint,
+  'amount' : bigint,
+  'requestTime' : Time,
+}
 export type GamePhase = {
     'reveal' : { 'startTime' : Time, 'result' : [] | [string] }
   } |
@@ -25,6 +33,7 @@ export interface MultiplierConfig {
   'green' : number,
   'violet' : number,
 }
+export interface PaymentMethod { 'qrImageUrl' : string, 'upiId' : string }
 export interface RoundView {
   'startTime' : Time,
   'result' : [] | [string],
@@ -36,47 +45,30 @@ export interface RoundView {
   'phase' : GamePhase,
 }
 export type Time = bigint;
+export interface TransactionLog {
+  'userId' : Principal,
+  'logType' : string,
+  'timestamp' : Time,
+  'adminId' : Principal,
+  'amount' : bigint,
+}
 export interface UserProfile {
   'coins' : bigint,
   'withdrawalRequests' : Array<WithdrawalRequest>,
   'lastBonusTime' : Time,
   'dailyStreak' : bigint,
-  'betHistory' : Array<Bet>,
   'lastSpinTime' : Time,
+  'betHistory' : Array<Bet>,
 }
-export type UserRole = { 'admin' : null } |
-  { 'user' : null } |
-  { 'guest' : null };
 export interface WithdrawalRequest {
   'processed' : boolean,
   'amount' : bigint,
   'requestTime' : Time,
 }
-export interface DepositRequest {
-  'user' : Principal,
-  'amount' : bigint,
-  'bonusAmount' : bigint,
-  'requestTime' : Time,
-  'approved' : boolean,
-  'index' : bigint,
-}
-export interface PaymentMethod {
-  'upiId' : string,
-  'qrImageUrl' : string,
-}
-export interface TransactionLog {
-  'userId' : Principal,
-  'adminId' : Principal,
-  'amount' : bigint,
-  'logType' : string,
-  'timestamp' : bigint,
-}
 export interface _SERVICE {
-  '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'adjustUserCoins' : ActorMethod<[Principal, bigint], undefined>,
   'approveDeposit' : ActorMethod<[bigint], undefined>,
   'assignAdminRole' : ActorMethod<[Principal, string], undefined>,
-  'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'assignCoinsToAdmin' : ActorMethod<[Principal, bigint], undefined>,
   'claimDailyBonus' : ActorMethod<[], undefined>,
   'clearForcedResult' : ActorMethod<[], undefined>,
@@ -92,9 +84,9 @@ export interface _SERVICE {
     Array<[Principal, WithdrawalRequest]>
   >,
   'getCallerAdminRole' : ActorMethod<[], string>,
+  'getCallerApprovedDepositTotal' : ActorMethod<[], bigint>,
   'getCallerDepositRequests' : ActorMethod<[], Array<DepositRequest>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
-  'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getCallerWithdrawalRequests' : ActorMethod<[], Array<WithdrawalRequest>>,
   'getCurrentRoundBets' : ActorMethod<
     [],
@@ -103,20 +95,24 @@ export interface _SERVICE {
   'getCurrentRoundPhase' : ActorMethod<[], string>,
   'getForceResultStatus' : ActorMethod<
     [],
-    { 'forcedColor' : [] | [string], 'forcedSize' : [] | [string], 'isActive' : boolean }
+    {
+      'forcedColor' : [] | [string],
+      'isActive' : boolean,
+      'forcedSize' : [] | [string],
+    }
   >,
   'getGameState' : ActorMethod<
     [],
     {
+      'forcedColor' : [] | [string],
       'roundHistory' : Array<RoundView>,
       'autoResolve' : boolean,
       'manualResult' : [] | [string],
       'currentRoundId' : bigint,
       'phase' : string,
+      'forcedSize' : [] | [string],
       'multipliers' : MultiplierConfig,
       'phaseStartTimestamp' : Time,
-      'forcedColor' : [] | [string],
-      'forcedSize' : [] | [string],
     }
   >,
   'getMyAdminBalance' : ActorMethod<[], bigint>,
@@ -126,7 +122,6 @@ export interface _SERVICE {
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'hasApprovedDeposit' : ActorMethod<[], boolean>,
   'hasFirstDepositBonus' : ActorMethod<[], boolean>,
-  'isCallerAdmin' : ActorMethod<[], boolean>,
   'markWithdrawalProcessed' : ActorMethod<[Principal, bigint], undefined>,
   'placeBet' : ActorMethod<[string, bigint], undefined>,
   'requestWithdrawal' : ActorMethod<[bigint], undefined>,

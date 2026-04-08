@@ -9,8 +9,8 @@ import { CheckCircle2, Circle, Gift, Zap } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import type { UserProfile } from "../backend.d";
 import { useClaimBonus } from "../hooks/useQueries";
+import type { UserProfile } from "../types";
 import { canClaimBonus } from "../utils/gameUtils";
 import { SpinWheel } from "./SpinWheel";
 

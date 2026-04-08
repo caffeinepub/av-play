@@ -18,10 +18,16 @@ export interface RoundView {
     totalVioletBets: bigint;
     phase: GamePhase;
 }
-export interface Bet {
-    betAmount: bigint;
-    betTime: Time;
-    betColor: string;
+export interface PaymentMethod {
+    qrImageUrl: string;
+    upiId: string;
+}
+export interface TransactionLog {
+    userId: Principal;
+    logType: string;
+    timestamp: Time;
+    adminId: Principal;
+    amount: bigint;
 }
 export type GamePhase = {
     __kind__: "reveal";
@@ -40,6 +46,19 @@ export type GamePhase = {
         startTime: Time;
     };
 };
+export interface DepositRequest {
+    bonusAmount: bigint;
+    user: Principal;
+    approved: boolean;
+    index: bigint;
+    amount: bigint;
+    requestTime: Time;
+}
+export interface Bet {
+    betAmount: bigint;
+    betTime: Time;
+    betColor: string;
+}
 export interface WithdrawalRequest {
     processed: boolean;
     amount: bigint;
@@ -55,39 +74,13 @@ export interface UserProfile {
     withdrawalRequests: Array<WithdrawalRequest>;
     lastBonusTime: Time;
     dailyStreak: bigint;
-    betHistory: Array<Bet>;
     lastSpinTime: Time;
-}
-export interface DepositRequest {
-    user: Principal;
-    amount: bigint;
-    bonusAmount: bigint;
-    requestTime: Time;
-    approved: boolean;
-    index: bigint;
-}
-export interface PaymentMethod {
-    upiId: string;
-    qrImageUrl: string;
-}
-export interface TransactionLog {
-    userId: Principal;
-    adminId: Principal;
-    amount: bigint;
-    logType: string;
-    timestamp: Time;
-}
-export enum UserRole {
-    admin = "admin",
-    user = "user",
-    guest = "guest"
+    betHistory: Array<Bet>;
 }
 export interface backendInterface {
-    _initializeAccessControlWithSecret(secret: string): Promise<void>;
     adjustUserCoins(user: Principal, amount: bigint): Promise<void>;
     approveDeposit(requestIndex: bigint): Promise<void>;
     assignAdminRole(user: Principal, role: string): Promise<void>;
-    assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     assignCoinsToAdmin(admin: Principal, amount: bigint): Promise<void>;
     claimDailyBonus(): Promise<void>;
     clearForcedResult(): Promise<void>;
@@ -100,9 +93,9 @@ export interface backendInterface {
     getAllUserHoldings(): Promise<Array<[Principal, bigint]>>;
     getAllWithdrawalRequests(): Promise<Array<[Principal, WithdrawalRequest]>>;
     getCallerAdminRole(): Promise<string>;
+    getCallerApprovedDepositTotal(): Promise<bigint>;
     getCallerDepositRequests(): Promise<Array<DepositRequest>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
-    getCallerUserRole(): Promise<UserRole>;
     getCallerWithdrawalRequests(): Promise<Array<WithdrawalRequest>>;
     getCurrentRoundBets(): Promise<{
         red: bigint;
@@ -111,27 +104,28 @@ export interface backendInterface {
     }>;
     getCurrentRoundPhase(): Promise<string>;
     getForceResultStatus(): Promise<{
-        forcedColor: string | null;
-        forcedSize: string | null;
+        forcedColor?: string;
         isActive: boolean;
+        forcedSize?: string;
     }>;
     getGameState(): Promise<{
+        forcedColor?: string;
         roundHistory: Array<RoundView>;
         autoResolve: boolean;
         manualResult?: string;
         currentRoundId: bigint;
         phase: string;
+        forcedSize?: string;
         multipliers: MultiplierConfig;
         phaseStartTimestamp: Time;
-        forcedColor?: string;
-        forcedSize?: string;
     }>;
+    getMyAdminBalance(): Promise<bigint>;
     getPaymentMethod(): Promise<PaymentMethod>;
     getSuperAdminPrincipal(): Promise<Principal | null>;
     getTransactionLogs(): Promise<Array<TransactionLog>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
+    hasApprovedDeposit(): Promise<boolean>;
     hasFirstDepositBonus(): Promise<boolean>;
-    isCallerAdmin(): Promise<boolean>;
     markWithdrawalProcessed(user: Principal, index: bigint): Promise<void>;
     placeBet(color: string, amount: bigint): Promise<void>;
     requestWithdrawal(amount: bigint): Promise<void>;
@@ -141,7 +135,7 @@ export interface backendInterface {
     setPaymentMethod(upiId: string, qrImageUrl: string): Promise<void>;
     setSuperAdmin(newSuperAdmin: Principal): Promise<void>;
     setUserCoins(user: Principal, amount: bigint): Promise<void>;
-    submitDepositRequest(amount: bigint): Promise<void>;
     spinWheel(): Promise<bigint>;
+    submitDepositRequest(amount: bigint): Promise<void>;
     toggleAutoResolve(): Promise<void>;
 }

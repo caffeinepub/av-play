@@ -1,8 +1,8 @@
 import { motion, useAnimation } from "motion/react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import type { UserProfile } from "../backend.d";
 import { useSpinWheel } from "../hooks/useQueries";
+import type { UserProfile } from "../types";
 
 const PRIZES = [9, 129, 19, 499, 29, 999];
 const PRIZE_COLORS = [

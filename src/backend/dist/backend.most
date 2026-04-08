@@ -1,0 +1,286 @@
+// Version: 3.0.0
+type AdminRole__550079881 = {#admin; #super_admin; #user};
+type Bet__98644711 =
+  {betAmount : Nat; betColor : Text; betTime : Time__900049286};
+type Data__359466409<K, V> = {var count : Nat; kvs : [var ?(K, V)]};
+type Data__791452850<K, V> =
+  {var count : Nat__490723111; kvs : [var ?(K, V)]};
+type DepositRequest__156460474 =
+  {
+    amount : Nat;
+    approved : Bool;
+    bonusAmount : Nat;
+    index : Nat;
+    requestTime : Time__900049286;
+    user : Principal
+  };
+type GamePhase__800432995 =
+  {
+    #betting : {startTime : Time__900049286};
+    #cooldown : {startTime : Time__900049286};
+    #reveal : {result : ?Text; startTime : Time__900049286}
+  };
+type Int__270357528 = Int__616954475;
+type Int__616954475 = Int;
+type Internal__698724509<K, V> =
+  {children : [var ?Node__849645438<K, V>]; data : Data__359466409<K, V>};
+type Internal__8484328<K, V> =
+  {children : [var ?Node__46230540<K, V>]; data : Data__791452850<K, V>};
+type Leaf__686525213<K, V> = {data : Data__359466409<K, V>};
+type Leaf__809889148<K, V> = {data : Data__791452850<K, V>};
+type List__415060402<T> = List__790383201<T>;
+type List__790383201<T> =
+  {
+    var blockIndex : Nat__490723111;
+    var blocks : [var [var ?T]];
+    var elementIndex : Nat__490723111
+  };
+type Map__158565046<K, V> = Map__297112838<K, V>;
+type Map__297112838<K, V> =
+  {var root : Node__46230540<K, V>; var size : Nat__490723111};
+type Map__605269027<K, V> = Map__158565046<K, V>;
+type Nat__490723111 = Nat__920180692;
+type Nat__920180692 = Nat;
+type Node__46230540<K, V> =
+  {#internal : Internal__8484328<K, V>; #leaf : Leaf__809889148<K, V>};
+type Node__849645438<K, V> =
+  {#internal : Internal__698724509<K, V>; #leaf : Leaf__686525213<K, V>};
+type OldAccessControlState__841599830 =
+  {
+    var adminAssigned : Bool;
+    userRoles : StableMap__590940825<Principal, UserRole__717262347>
+  };
+type Round__156699138 =
+  {
+    bets : Map__605269027<Principal, Bet__98644711>;
+    phase : GamePhase__800432995;
+    result : ?Text;
+    roundId : Nat;
+    startTime : Time__900049286;
+    totalGreenBets : Nat;
+    totalRedBets : Nat;
+    totalVioletBets : Nat
+  };
+type StableMap__590940825<K, V> =
+  {var root : Node__849645438<K, V>; var size : Nat};
+type Time__796480547 = Int__270357528;
+type Time__900049286 = Time__796480547;
+type TransactionLog__154839357 =
+  {
+    adminId : Principal;
+    amount : Int;
+    logType : Text;
+    timestamp : Time__900049286;
+    userId : Principal
+  };
+type UserRole__717262347 = {#admin; #guest; #user};
+type User__831686142 =
+  {
+    betHistory : List__415060402<Bet__98644711>;
+    coins : Nat;
+    dailyStreak : Nat;
+    lastBonusTime : Time__900049286;
+    withdrawalRequests : List__415060402<WithdrawalRequest__57663818>
+  };
+type WithdrawalRequest__57663818 =
+  {amount : Nat; processed : Bool; requestTime : Time__900049286};
+actor ({
+  stable MIN_DEPOSIT_TO_BET : Nat;
+  stable _hardcodedSuperAdmin : Principal;
+  in accessControlState : OldAccessControlState__841599830;
+  stable adminBalances :
+    {var root : Node__46230540<Principal, Nat>; var size : Nat__490723111};
+  stable adminLogs :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?Text]];
+      var elementIndex : Nat__490723111
+    };
+  stable adminRoles :
+    {
+      var root : Node__46230540<Principal, AdminRole__550079881>;
+      var size : Nat__490723111
+    };
+  stable var autoResolveMode : Bool;
+  stable betLimit : Nat;
+  stable betPhaseSeconds : Nat;
+  stable bettingPhaseRounds :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable completedRounds :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable cooldownPhaseRounds :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable cooldownPhaseSeconds : Nat;
+  stable var currentPhase :
+    {
+      #betting : {startTime : Time__900049286};
+      #cooldown : {startTime : Time__900049286};
+      #reveal : {result : ?Text; startTime : Time__900049286}
+    };
+  stable var currentRoundId : Nat;
+  stable var currentRoundStartTime : Int;
+  stable dailyBonusCooldown : Nat;
+  stable var depositRequestCount : Nat;
+  stable depositRequests :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?DepositRequest__156460474]];
+      var elementIndex : Nat__490723111
+    };
+  stable firstDepositBonusGiven :
+    {var root : Node__46230540<Principal, Bool>; var size : Nat__490723111};
+  stable var forcedColor : ?Text;
+  stable var forcedSize : ?Text;
+  stable initialMultipliers : {green : Float; red : Float; violet : Float};
+  stable var manualResultMode : Bool;
+  stable var multiplierGreen : Float;
+  stable var multiplierRed : Float;
+  stable var multiplierViolet : Float;
+  stable var nextManualResult : ?Text;
+  stable var paymentQrImageUrl : Text;
+  stable var paymentUpiId : Text;
+  stable revealPhaseRoundsState :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable revealPhaseSeconds : Nat;
+  stable roundTimeSeconds : Nat;
+  stable spinCooldown : Nat;
+  stable spinPrizes : [Nat];
+  stable startingCoins : Nat;
+  stable var superAdminPrincipal : ?Principal;
+  stable transactionLogs :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?TransactionLog__154839357]];
+      var elementIndex : Nat__490723111
+    };
+  stable userApprovedDepositTotal :
+    {var root : Node__46230540<Principal, Nat>; var size : Nat__490723111};
+  stable userSpinTimes :
+    {
+      var root : Node__46230540<Principal, Time__900049286>;
+      var size : Nat__490723111
+    };
+  stable userState :
+    {
+      var root : Node__46230540<Principal, User__831686142>;
+      var size : Nat__490723111
+    };
+  stable withdrawalRequestsState :
+    {
+      var root :
+        Node__46230540<Principal,
+                        List__415060402<WithdrawalRequest__57663818>>;
+      var size : Nat__490723111
+    }
+}, {
+  stable MIN_DEPOSIT_TO_BET : Nat;
+  stable _hardcodedSuperAdmin : Principal;
+  stable adminBalances :
+    {var root : Node__46230540<Principal, Nat>; var size : Nat__490723111};
+  stable adminLogs :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?Text]];
+      var elementIndex : Nat__490723111
+    };
+  stable adminRoles :
+    {
+      var root : Node__46230540<Principal, AdminRole__550079881>;
+      var size : Nat__490723111
+    };
+  stable var autoResolveMode : Bool;
+  stable betLimit : Nat;
+  stable betPhaseSeconds : Nat;
+  stable bettingPhaseRounds :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable completedRounds :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable cooldownPhaseRounds :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable cooldownPhaseSeconds : Nat;
+  stable var currentPhase :
+    {
+      #betting : {startTime : Time__900049286};
+      #cooldown : {startTime : Time__900049286};
+      #reveal : {result : ?Text; startTime : Time__900049286}
+    };
+  stable var currentRoundId : Nat;
+  stable var currentRoundStartTime : Int;
+  stable dailyBonusCooldown : Nat;
+  stable var depositRequestCount : Nat;
+  stable depositRequests :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?DepositRequest__156460474]];
+      var elementIndex : Nat__490723111
+    };
+  stable firstDepositBonusGiven :
+    {var root : Node__46230540<Principal, Bool>; var size : Nat__490723111};
+  stable var forcedColor : ?Text;
+  stable var forcedSize : ?Text;
+  stable initialMultipliers : {green : Float; red : Float; violet : Float};
+  stable var manualResultMode : Bool;
+  stable var multiplierGreen : Float;
+  stable var multiplierRed : Float;
+  stable var multiplierViolet : Float;
+  stable var nextManualResult : ?Text;
+  stable var paymentQrImageUrl : Text;
+  stable var paymentUpiId : Text;
+  stable revealPhaseRoundsState :
+    {
+      var root : Node__46230540<Nat, Round__156699138>;
+      var size : Nat__490723111
+    };
+  stable revealPhaseSeconds : Nat;
+  stable roundTimeSeconds : Nat;
+  stable spinCooldown : Nat;
+  stable spinPrizes : [Nat];
+  stable startingCoins : Nat;
+  stable var superAdminPrincipal : ?Principal;
+  stable transactionLogs :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?TransactionLog__154839357]];
+      var elementIndex : Nat__490723111
+    };
+  stable userApprovedDepositTotal :
+    {var root : Node__46230540<Principal, Nat>; var size : Nat__490723111};
+  stable userSpinTimes :
+    {
+      var root : Node__46230540<Principal, Time__900049286>;
+      var size : Nat__490723111
+    };
+  stable userState :
+    {
+      var root : Node__46230540<Principal, User__831686142>;
+      var size : Nat__490723111
+    };
+  stable withdrawalRequestsState :
+    {
+      var root :
+        Node__46230540<Principal,
+                        List__415060402<WithdrawalRequest__57663818>>;
+      var size : Nat__490723111
+    }
+}) ;

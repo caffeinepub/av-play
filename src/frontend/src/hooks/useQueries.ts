@@ -1,6 +1,6 @@
 import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserRole } from "../backend.d";
+import { UserRole } from "../types";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
@@ -227,8 +227,14 @@ export function useApproveDeposit() {
       return actor.approveDeposit(requestIndex);
     },
     onSuccess: () => {
+      // Invalidate + immediately refetch so betting unlocks without waiting for the next poll interval
       qc.invalidateQueries({ queryKey: ["depositRequests"] });
       qc.invalidateQueries({ queryKey: ["allUserHoldings"] });
+      qc.invalidateQueries({ queryKey: ["userProfile"] });
+      qc.invalidateQueries({ queryKey: ["callerApprovedDepositTotal"] });
+      qc.invalidateQueries({ queryKey: ["hasApprovedDeposit"] });
+      qc.refetchQueries({ queryKey: ["callerApprovedDepositTotal"] });
+      qc.refetchQueries({ queryKey: ["hasApprovedDeposit"] });
     },
   });
 }
@@ -443,7 +449,10 @@ export function useCallerAdminRole() {
       }
     },
     enabled: !!actor && !isFetching,
-    staleTime: 30_000,
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
@@ -573,7 +582,10 @@ export function useHasApprovedDeposit() {
       }
     },
     enabled: !!actor && !isFetching,
-    refetchInterval: 5000,
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
@@ -645,6 +657,9 @@ export function useCallerApprovedDepositTotal() {
       }
     },
     enabled: !!actor && !isFetching,
-    refetchInterval: 5000,
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+    gcTime: 0,
   });
 }

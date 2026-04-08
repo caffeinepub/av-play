@@ -12,6 +12,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Principal } from "@icp-sdk/core/principal";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -45,14 +46,12 @@ import {
   useForceResult,
   useForceResultStatus,
   useGameState,
-  useGetSuperAdminPrincipal,
   useMarkWithdrawalProcessed,
   useMyAdminBalance,
   usePaymentMethod,
   useSetManualResult,
   useSetMultipliers,
   useSetPaymentMethod,
-  useSetSuperAdmin,
   useToggleAutoResolve,
 } from "../hooks/useQueries";
 import {
@@ -193,6 +192,7 @@ export function AdminPage() {
 }
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+  const queryClient = useQueryClient();
   const gameState = useGameState();
   const holdings = useAllUserHoldings();
   const logs = useAdminLogs();
@@ -230,10 +230,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const assignAdminRole = useAssignAdminRole();
 
   // Super admin setup hooks
-  const setSuperAdmin = useSetSuperAdmin();
-  const superAdminPrincipalQuery = useGetSuperAdminPrincipal();
-  const superAdminIsSet = !!superAdminPrincipalQuery.data;
-  const [superAdminSuccess, setSuperAdminSuccess] = useState(false);
 
   const [multRed, setMultRed] = useState("");
   const [multGreen, setMultGreen] = useState("");
@@ -579,74 +575,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
-        {/* Set Super Admin Banner — visible only when no super admin is set yet */}
-        {!superAdminIsSet && !superAdminSuccess && callerPrincipal && (
-          <div
-            className="mb-4 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3"
-            style={{
-              background: "oklch(0.57 0.28 300 / 0.12)",
-              border: "1px solid oklch(0.57 0.28 300 / 0.5)",
-            }}
-            data-ocid="admin.set_super_admin.banner"
-          >
-            <div className="flex-1">
-              <p
-                className="text-sm font-bold"
-                style={{ color: "oklch(0.68 0.25 300)" }}
-              >
-                <Shield className="w-4 h-4 inline mr-1" />
-                No Super Admin set yet
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Click to assign yourself as Super Admin using your current
-                Principal ID.
-              </p>
-            </div>
-            <Button
-              size="sm"
-              onClick={async () => {
-                if (!callerPrincipal) return;
-                try {
-                  await setSuperAdmin.mutateAsync(callerPrincipal);
-                  setSuperAdminSuccess(true);
-                  toast.success("You are now Super Admin");
-                } catch (e: any) {
-                  toast.error(e?.message || "Failed to set super admin");
-                }
-              }}
-              disabled={setSuperAdmin.isPending}
-              data-ocid="admin.set_super_admin.button"
-              style={{
-                background: "oklch(0.57 0.28 300 / 0.3)",
-                border: "1px solid oklch(0.57 0.28 300)",
-                color: "white",
-              }}
-            >
-              {setSuperAdmin.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <Shield className="w-4 h-4 mr-1" />
-                  Set Super Admin
-                </>
-              )}
-            </Button>
-          </div>
-        )}
-        {superAdminSuccess && (
-          <div
-            className="mb-4 rounded-xl p-3 text-sm font-bold text-center"
-            style={{
-              background: "oklch(0.57 0.28 300 / 0.15)",
-              border: "1px solid oklch(0.57 0.28 300 / 0.5)",
-              color: "oklch(0.68 0.25 300)",
-            }}
-            data-ocid="admin.set_super_admin.success_state"
-          >
-            <Shield className="w-4 h-4 inline mr-1" />
-            You are now Super Admin
-          </div>
-        )}
         <Tabs defaultValue="deposits" data-ocid="admin.tab">
           <TabsList className="bg-muted/30 border border-border/30 mb-6 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="deposits" data-ocid="admin.deposits.tab">
@@ -742,6 +670,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                                 toast.success(
                                   "Deposit approved & coins credited!",
                                 );
+                                // Force-refetch so user's betting lock lifts immediately
+                                queryClient.invalidateQueries({
+                                  queryKey: ["callerApprovedDepositTotal"],
+                                });
+                                queryClient.refetchQueries({
+                                  queryKey: ["callerApprovedDepositTotal"],
+                                });
+                                queryClient.invalidateQueries({
+                                  queryKey: ["hasApprovedDeposit"],
+                                });
+                                queryClient.refetchQueries({
+                                  queryKey: ["hasApprovedDeposit"],
+                                });
+                                queryClient.invalidateQueries({
+                                  queryKey: ["userProfile"],
+                                });
                               } catch (e: any) {
                                 toast.error(e?.message);
                               }

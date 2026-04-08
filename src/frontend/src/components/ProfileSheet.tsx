@@ -24,7 +24,6 @@ import {
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { UserProfile } from "../backend.d";
 import {
   useCallerDepositRequests,
   useCallerWithdrawalRequests,
@@ -34,6 +33,7 @@ import {
   useRequestWithdrawal,
   useSubmitDepositRequest,
 } from "../hooks/useQueries";
+import type { UserProfile } from "../types";
 import { canClaimBonus, formatCoins } from "../utils/gameUtils";
 
 interface ProfileSheetProps {

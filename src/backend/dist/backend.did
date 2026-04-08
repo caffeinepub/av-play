@@ -1,0 +1,145 @@
+type WithdrawalRequest = 
+ record {
+   amount: nat;
+   processed: bool;
+   requestTime: Time;
+ };
+type UserProfile = 
+ record {
+   betHistory: vec Bet;
+   coins: nat;
+   dailyStreak: nat;
+   lastBonusTime: Time;
+   lastSpinTime: Time;
+   withdrawalRequests: vec WithdrawalRequest;
+ };
+type TransactionLog = 
+ record {
+   adminId: principal;
+   amount: int;
+   logType: text;
+   timestamp: Time;
+   userId: principal;
+ };
+type Time = int;
+type RoundView = 
+ record {
+   bets: vec record {
+               principal;
+               Bet;
+             };
+   phase: GamePhase;
+   result: opt text;
+   roundId: nat;
+   startTime: Time;
+   totalGreenBets: nat;
+   totalRedBets: nat;
+   totalVioletBets: nat;
+ };
+type PaymentMethod = 
+ record {
+   qrImageUrl: text;
+   upiId: text;
+ };
+type MultiplierConfig = 
+ record {
+   green: float64;
+   red: float64;
+   violet: float64;
+ };
+type GamePhase = 
+ variant {
+   betting: record {startTime: Time;};
+   cooldown: record {startTime: Time;};
+   reveal: record {
+             result: opt text;
+             startTime: Time;
+           };
+ };
+type DepositRequest = 
+ record {
+   amount: nat;
+   approved: bool;
+   bonusAmount: nat;
+   index: nat;
+   requestTime: Time;
+   user: principal;
+ };
+type Bet = 
+ record {
+   betAmount: nat;
+   betColor: text;
+   betTime: Time;
+ };
+service : {
+  adjustUserCoins: (user: principal, amount: int) -> ();
+  approveDeposit: (requestIndex: nat) -> ();
+  assignAdminRole: (user: principal, role: text) -> ();
+  assignCoinsToAdmin: (admin: principal, amount: nat) -> ();
+  claimDailyBonus: () -> ();
+  clearForcedResult: () -> ();
+  clearManualOverride: () -> ();
+  depositCoins: (amount: nat) -> ();
+  forceResult: (color: text, size: text) -> ();
+  getAdminBalance: (admin: principal) -> (nat) query;
+  getAdminLogs: () -> (vec text) query;
+  getAllDepositRequests: () -> (vec DepositRequest) query;
+  getAllUserHoldings: () -> (vec record {
+                                   principal;
+                                   nat;
+                                 }) query;
+  getAllWithdrawalRequests: () ->
+   (vec record {
+          principal;
+          WithdrawalRequest;
+        }) query;
+  getCallerAdminRole: () -> (text) query;
+  getCallerApprovedDepositTotal: () -> (nat) query;
+  getCallerDepositRequests: () -> (vec DepositRequest) query;
+  getCallerUserProfile: () -> (opt UserProfile) query;
+  getCallerWithdrawalRequests: () -> (vec WithdrawalRequest) query;
+  getCurrentRoundBets: () ->
+   (record {
+      green: nat;
+      red: nat;
+      violet: nat;
+    }) query;
+  getCurrentRoundPhase: () -> (text) query;
+  getForceResultStatus: () ->
+   (record {
+      forcedColor: opt text;
+      forcedSize: opt text;
+      isActive: bool;
+    }) query;
+  getGameState: () ->
+   (record {
+      autoResolve: bool;
+      currentRoundId: nat;
+      forcedColor: opt text;
+      forcedSize: opt text;
+      manualResult: opt text;
+      multipliers: MultiplierConfig;
+      phase: text;
+      phaseStartTimestamp: Time;
+      roundHistory: vec RoundView;
+    }) query;
+  getMyAdminBalance: () -> (nat) query;
+  getPaymentMethod: () -> (PaymentMethod) query;
+  getSuperAdminPrincipal: () -> (opt principal) query;
+  getTransactionLogs: () -> (vec TransactionLog) query;
+  getUserProfile: (user: principal) -> (opt UserProfile) query;
+  hasApprovedDeposit: () -> (bool) query;
+  hasFirstDepositBonus: () -> (bool) query;
+  markWithdrawalProcessed: (user: principal, index: nat) -> ();
+  placeBet: (color: text, amount: nat) -> ();
+  requestWithdrawal: (amount: nat) -> ();
+  saveCallerUserProfile: (profile: UserProfile) -> ();
+  setManualResultOverride: (result: text) -> ();
+  setMultipliers: (red: float64, green: float64, violet: float64) -> ();
+  setPaymentMethod: (upiId: text, qrImageUrl: text) -> ();
+  setSuperAdmin: (newSuperAdmin: principal) -> ();
+  setUserCoins: (user: principal, amount: nat) -> ();
+  spinWheel: () -> (nat);
+  submitDepositRequest: (amount: nat) -> ();
+  toggleAutoResolve: () -> ();
+}

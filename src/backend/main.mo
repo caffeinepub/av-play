@@ -10,9 +10,9 @@ import Time "mo:core/Time";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Float "mo:core/Float";
-import MixinAuthorization "authorization/MixinAuthorization";
-import AccessControl "authorization/access-control";
+import Migration "migration";
 
+(with migration = Migration.run)
 actor {
   // CONSTANTS
   let startingCoins = 100;
@@ -172,10 +172,6 @@ actor {
   var paymentUpiId : Text = "6205006521@okbizaxis";
   var paymentQrImageUrl : Text = "/assets/fd4426e3-53eb-407e-a99a-c7978d669943_image-019d4ab9-3854-716b-93ac-e620b7e024db.png";
 
-  // Authorization mixin
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
-
   var autoResolveMode : Bool = true;
   var manualResultMode : Bool = false;
   var nextManualResult : ?Text = null;
@@ -190,7 +186,7 @@ actor {
   // Super admin and admin role system
   let adminRoles = Map.empty<Principal, AdminRole>();
   let adminBalances = Map.empty<Principal, Nat>();
-  let _hardcodedSuperAdmin = Principal.fromText("xydbj-u2k7q-g2y6s-3rrtz-mw5so-2kbxm-hhven-fuv65-mcke5-unyyl-eae");
+  let _hardcodedSuperAdmin = Principal.fromText("onvyb-m2rbc-y4r5k-ia6gl-wuz7s-3t7zt-zvdfu-nliud-acubt-hgfhj-lae");
   var superAdminPrincipal : ?Principal = ?_hardcodedSuperAdmin;
   adminRoles.add(_hardcodedSuperAdmin, #super_admin);
 

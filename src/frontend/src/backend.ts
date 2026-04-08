@@ -100,10 +100,16 @@ export interface RoundView {
     totalVioletBets: bigint;
     phase: GamePhase;
 }
-export interface Bet {
-    betAmount: bigint;
-    betTime: Time;
-    betColor: string;
+export interface PaymentMethod {
+    qrImageUrl: string;
+    upiId: string;
+}
+export interface TransactionLog {
+    userId: Principal;
+    logType: string;
+    timestamp: Time;
+    adminId: Principal;
+    amount: bigint;
 }
 export type GamePhase = {
     __kind__: "reveal";
@@ -122,6 +128,19 @@ export type GamePhase = {
         startTime: Time;
     };
 };
+export interface DepositRequest {
+    bonusAmount: bigint;
+    user: Principal;
+    approved: boolean;
+    index: bigint;
+    amount: bigint;
+    requestTime: Time;
+}
+export interface Bet {
+    betAmount: bigint;
+    betTime: Time;
+    betColor: string;
+}
 export interface WithdrawalRequest {
     processed: boolean;
     amount: bigint;
@@ -137,87 +156,74 @@ export interface UserProfile {
     withdrawalRequests: Array<WithdrawalRequest>;
     lastBonusTime: Time;
     dailyStreak: bigint;
-    betHistory: Array<Bet>;
     lastSpinTime: Time;
-}
-export enum UserRole {
-    admin = "admin",
-    user = "user",
-    guest = "guest"
-}
-export interface DepositRequest {
-    user: Principal;
-    amount: bigint;
-    bonusAmount: bigint;
-    requestTime: Time;
-    approved: boolean;
-    index: bigint;
-}
-export interface PaymentMethod {
-    upiId: string;
-    qrImageUrl: string;
+    betHistory: Array<Bet>;
 }
 export interface backendInterface {
-    _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     adjustUserCoins(user: Principal, amount: bigint): Promise<void>;
-    assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    approveDeposit(requestIndex: bigint): Promise<void>;
+    assignAdminRole(user: Principal, role: string): Promise<void>;
+    assignCoinsToAdmin(admin: Principal, amount: bigint): Promise<void>;
     claimDailyBonus(): Promise<void>;
+    clearForcedResult(): Promise<void>;
     clearManualOverride(): Promise<void>;
     depositCoins(amount: bigint): Promise<void>;
+    forceResult(color: string, size: string): Promise<void>;
+    getAdminBalance(admin: Principal): Promise<bigint>;
     getAdminLogs(): Promise<Array<string>>;
+    getAllDepositRequests(): Promise<Array<DepositRequest>>;
     getAllUserHoldings(): Promise<Array<[Principal, bigint]>>;
     getAllWithdrawalRequests(): Promise<Array<[Principal, WithdrawalRequest]>>;
+    getCallerAdminRole(): Promise<string>;
+    getCallerApprovedDepositTotal(): Promise<bigint>;
+    getCallerDepositRequests(): Promise<Array<DepositRequest>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
-    getCallerUserRole(): Promise<UserRole>;
+    getCallerWithdrawalRequests(): Promise<Array<WithdrawalRequest>>;
     getCurrentRoundBets(): Promise<{
         red: bigint;
         green: bigint;
         violet: bigint;
     }>;
     getCurrentRoundPhase(): Promise<string>;
+    getForceResultStatus(): Promise<{
+        forcedColor?: string;
+        isActive: boolean;
+        forcedSize?: string;
+    }>;
     getGameState(): Promise<{
+        forcedColor?: string;
         roundHistory: Array<RoundView>;
         autoResolve: boolean;
         manualResult?: string;
         currentRoundId: bigint;
         phase: string;
+        forcedSize?: string;
         multipliers: MultiplierConfig;
         phaseStartTimestamp: Time;
     }>;
+    getMyAdminBalance(): Promise<bigint>;
+    getPaymentMethod(): Promise<PaymentMethod>;
+    getSuperAdminPrincipal(): Promise<Principal | null>;
+    getTransactionLogs(): Promise<Array<TransactionLog>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
-    isCallerAdmin(): Promise<boolean>;
+    hasApprovedDeposit(): Promise<boolean>;
+    hasFirstDepositBonus(): Promise<boolean>;
     markWithdrawalProcessed(user: Principal, index: bigint): Promise<void>;
     placeBet(color: string, amount: bigint): Promise<void>;
     requestWithdrawal(amount: bigint): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     setManualResultOverride(result: string): Promise<void>;
     setMultipliers(red: number, green: number, violet: number): Promise<void>;
-    approveDeposit(requestIndex: bigint): Promise<void>;
-    getAllDepositRequests(): Promise<Array<DepositRequest>>;
-    getPaymentMethod(): Promise<PaymentMethod>;
     setPaymentMethod(upiId: string, qrImageUrl: string): Promise<void>;
-    submitDepositRequest(amount: bigint): Promise<void>;
+    setSuperAdmin(newSuperAdmin: Principal): Promise<void>;
+    setUserCoins(user: Principal, amount: bigint): Promise<void>;
     spinWheel(): Promise<bigint>;
+    submitDepositRequest(amount: bigint): Promise<void>;
     toggleAutoResolve(): Promise<void>;
-    hasFirstDepositBonus(): Promise<boolean>;
 }
-import type { Bet as _Bet, GamePhase as _GamePhase, MultiplierConfig as _MultiplierConfig, RoundView as _RoundView, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { Bet as _Bet, GamePhase as _GamePhase, MultiplierConfig as _MultiplierConfig, RoundView as _RoundView, Time as _Time, UserProfile as _UserProfile } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
-    async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor._initializeAccessControlWithSecret(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor._initializeAccessControlWithSecret(arg0);
-            return result;
-        }
-    }
     async adjustUserCoins(arg0: Principal, arg1: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -232,17 +238,45 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async assignCallerUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
+    async approveDeposit(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+                const result = await this.actor.approveDeposit(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+            const result = await this.actor.approveDeposit(arg0);
+            return result;
+        }
+    }
+    async assignAdminRole(arg0: Principal, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.assignAdminRole(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.assignAdminRole(arg0, arg1);
+            return result;
+        }
+    }
+    async assignCoinsToAdmin(arg0: Principal, arg1: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.assignCoinsToAdmin(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.assignCoinsToAdmin(arg0, arg1);
             return result;
         }
     }
@@ -257,6 +291,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.claimDailyBonus();
+            return result;
+        }
+    }
+    async clearForcedResult(): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.clearForcedResult();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.clearForcedResult();
             return result;
         }
     }
@@ -288,6 +336,34 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async forceResult(arg0: string, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.forceResult(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.forceResult(arg0, arg1);
+            return result;
+        }
+    }
+    async getAdminBalance(arg0: Principal): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAdminBalance(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAdminBalance(arg0);
+            return result;
+        }
+    }
     async getAdminLogs(): Promise<Array<string>> {
         if (this.processError) {
             try {
@@ -299,6 +375,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getAdminLogs();
+            return result;
+        }
+    }
+    async getAllDepositRequests(): Promise<Array<DepositRequest>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAllDepositRequests();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAllDepositRequests();
             return result;
         }
     }
@@ -330,32 +420,74 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getCallerAdminRole(): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerAdminRole();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerAdminRole();
+            return result;
+        }
+    }
+    async getCallerApprovedDepositTotal(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerApprovedDepositTotal();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerApprovedDepositTotal();
+            return result;
+        }
+    }
+    async getCallerDepositRequests(): Promise<Array<DepositRequest>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerDepositRequests();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerDepositRequests();
+            return result;
+        }
+    }
     async getCallerUserProfile(): Promise<UserProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserProfile();
-                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserProfile();
-            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getCallerUserRole(): Promise<UserRole> {
+    async getCallerWithdrawalRequests(): Promise<Array<WithdrawalRequest>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getCallerUserRole();
-                return from_candid_UserRole_n4(this._uploadFile, this._downloadFile, result);
+                const result = await this.actor.getCallerWithdrawalRequests();
+                return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getCallerUserRole();
-            return from_candid_UserRole_n4(this._uploadFile, this._downloadFile, result);
+            const result = await this.actor.getCallerWithdrawalRequests();
+            return result;
         }
     }
     async getCurrentRoundBets(): Promise<{
@@ -390,53 +522,143 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getForceResultStatus(): Promise<{
+        forcedColor?: string;
+        isActive: boolean;
+        forcedSize?: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getForceResultStatus();
+                return from_candid_record_n2(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getForceResultStatus();
+            return from_candid_record_n2(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getGameState(): Promise<{
+        forcedColor?: string;
         roundHistory: Array<RoundView>;
         autoResolve: boolean;
         manualResult?: string;
         currentRoundId: bigint;
         phase: string;
+        forcedSize?: string;
         multipliers: MultiplierConfig;
         phaseStartTimestamp: Time;
     }> {
         if (this.processError) {
             try {
                 const result = await this.actor.getGameState();
-                return from_candid_record_n6(this._uploadFile, this._downloadFile, result);
+                return from_candid_record_n4(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getGameState();
-            return from_candid_record_n6(this._uploadFile, this._downloadFile, result);
+            return from_candid_record_n4(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
+    async getMyAdminBalance(): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.getUserProfile(arg0);
-                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getUserProfile(arg0);
-            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
-        }
-    }
-    async isCallerAdmin(): Promise<boolean> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.isCallerAdmin();
+                const result = await this.actor.getMyAdminBalance();
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.isCallerAdmin();
+            const result = await this.actor.getMyAdminBalance();
+            return result;
+        }
+    }
+    async getPaymentMethod(): Promise<PaymentMethod> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getPaymentMethod();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getPaymentMethod();
+            return result;
+        }
+    }
+    async getSuperAdminPrincipal(): Promise<Principal | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getSuperAdminPrincipal();
+                return from_candid_opt_n11(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getSuperAdminPrincipal();
+            return from_candid_opt_n11(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getTransactionLogs(): Promise<Array<TransactionLog>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getTransactionLogs();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getTransactionLogs();
+            return result;
+        }
+    }
+    async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getUserProfile(arg0);
+                return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getUserProfile(arg0);
+            return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async hasApprovedDeposit(): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.hasApprovedDeposit();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.hasApprovedDeposit();
+            return result;
+        }
+    }
+    async hasFirstDepositBonus(): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.hasFirstDepositBonus();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.hasFirstDepositBonus();
             return result;
         }
     }
@@ -524,17 +746,45 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async toggleAutoResolve(): Promise<void> {
+    async setPaymentMethod(arg0: string, arg1: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.toggleAutoResolve();
+                const result = await this.actor.setPaymentMethod(arg0, arg1);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.toggleAutoResolve();
+            const result = await this.actor.setPaymentMethod(arg0, arg1);
+            return result;
+        }
+    }
+    async setSuperAdmin(arg0: Principal): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setSuperAdmin(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setSuperAdmin(arg0);
+            return result;
+        }
+    }
+    async setUserCoins(arg0: Principal, arg1: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setUserCoins(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setUserCoins(arg0, arg1);
             return result;
         }
     }
@@ -552,47 +802,51 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async approveDeposit(arg0: bigint): Promise<void> {
-        const result = await this.actor.approveDeposit(arg0);
-        return result;
-    }
-    async getAllDepositRequests(): Promise<Array<DepositRequest>> {
-        const result = await this.actor.getAllDepositRequests();
-        return result;
-    }
-    async getPaymentMethod(): Promise<PaymentMethod> {
-        const result = await this.actor.getPaymentMethod();
-        return result;
-    }
-    async setPaymentMethod(arg0: string, arg1: string): Promise<void> {
-        const result = await this.actor.setPaymentMethod(arg0, arg1);
-        return result;
-    }
     async submitDepositRequest(arg0: bigint): Promise<void> {
-        const result = await this.actor.submitDepositRequest(arg0);
-        return result;
+        if (this.processError) {
+            try {
+                const result = await this.actor.submitDepositRequest(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.submitDepositRequest(arg0);
+            return result;
+        }
     }
-    async hasFirstDepositBonus(): Promise<boolean> {
-        const result = await this.actor.hasFirstDepositBonus();
-        return result;
+    async toggleAutoResolve(): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.toggleAutoResolve();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.toggleAutoResolve();
+            return result;
+        }
     }
 }
-function from_candid_GamePhase_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _GamePhase): GamePhase {
-    return from_candid_variant_n12(_uploadFile, _downloadFile, value);
+function from_candid_GamePhase_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _GamePhase): GamePhase {
+    return from_candid_variant_n9(_uploadFile, _downloadFile, value);
 }
-function from_candid_RoundView_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _RoundView): RoundView {
-    return from_candid_record_n9(_uploadFile, _downloadFile, value);
+function from_candid_RoundView_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _RoundView): RoundView {
+    return from_candid_record_n7(_uploadFile, _downloadFile, value);
 }
-function from_candid_UserRole_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
-    return from_candid_variant_n5(_uploadFile, _downloadFile, value);
-}
-function from_candid_opt_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+function from_candid_opt_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
+function from_candid_opt_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [Principal]): Principal | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_record_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_opt_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     startTime: _Time;
     result: [] | [string];
 }): {
@@ -601,37 +855,58 @@ function from_candid_record_n13(_uploadFile: (file: ExternalBlob) => Promise<Uin
 } {
     return {
         startTime: value.startTime,
-        result: record_opt_to_undefined(from_candid_opt_n10(_uploadFile, _downloadFile, value.result))
+        result: record_opt_to_undefined(from_candid_opt_n3(_uploadFile, _downloadFile, value.result))
     };
 }
-function from_candid_record_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    forcedColor: [] | [string];
+    isActive: boolean;
+    forcedSize: [] | [string];
+}): {
+    forcedColor?: string;
+    isActive: boolean;
+    forcedSize?: string;
+} {
+    return {
+        forcedColor: record_opt_to_undefined(from_candid_opt_n3(_uploadFile, _downloadFile, value.forcedColor)),
+        isActive: value.isActive,
+        forcedSize: record_opt_to_undefined(from_candid_opt_n3(_uploadFile, _downloadFile, value.forcedSize))
+    };
+}
+function from_candid_record_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    forcedColor: [] | [string];
     roundHistory: Array<_RoundView>;
     autoResolve: boolean;
     manualResult: [] | [string];
     currentRoundId: bigint;
     phase: string;
+    forcedSize: [] | [string];
     multipliers: _MultiplierConfig;
     phaseStartTimestamp: _Time;
 }): {
+    forcedColor?: string;
     roundHistory: Array<RoundView>;
     autoResolve: boolean;
     manualResult?: string;
     currentRoundId: bigint;
     phase: string;
+    forcedSize?: string;
     multipliers: MultiplierConfig;
     phaseStartTimestamp: Time;
 } {
     return {
-        roundHistory: from_candid_vec_n7(_uploadFile, _downloadFile, value.roundHistory),
+        forcedColor: record_opt_to_undefined(from_candid_opt_n3(_uploadFile, _downloadFile, value.forcedColor)),
+        roundHistory: from_candid_vec_n5(_uploadFile, _downloadFile, value.roundHistory),
         autoResolve: value.autoResolve,
-        manualResult: record_opt_to_undefined(from_candid_opt_n10(_uploadFile, _downloadFile, value.manualResult)),
+        manualResult: record_opt_to_undefined(from_candid_opt_n3(_uploadFile, _downloadFile, value.manualResult)),
         currentRoundId: value.currentRoundId,
         phase: value.phase,
+        forcedSize: record_opt_to_undefined(from_candid_opt_n3(_uploadFile, _downloadFile, value.forcedSize)),
         multipliers: value.multipliers,
         phaseStartTimestamp: value.phaseStartTimestamp
     };
 }
-function from_candid_record_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_record_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     startTime: _Time;
     result: [] | [string];
     bets: Array<[Principal, _Bet]>;
@@ -652,16 +927,16 @@ function from_candid_record_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint
 } {
     return {
         startTime: value.startTime,
-        result: record_opt_to_undefined(from_candid_opt_n10(_uploadFile, _downloadFile, value.result)),
+        result: record_opt_to_undefined(from_candid_opt_n3(_uploadFile, _downloadFile, value.result)),
         bets: value.bets,
         totalRedBets: value.totalRedBets,
         totalGreenBets: value.totalGreenBets,
         roundId: value.roundId,
         totalVioletBets: value.totalVioletBets,
-        phase: from_candid_GamePhase_n11(_uploadFile, _downloadFile, value.phase)
+        phase: from_candid_GamePhase_n8(_uploadFile, _downloadFile, value.phase)
     };
 }
-function from_candid_variant_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_variant_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     reveal: {
         startTime: _Time;
         result: [] | [string];
@@ -693,7 +968,7 @@ function from_candid_variant_n12(_uploadFile: (file: ExternalBlob) => Promise<Ui
 } {
     return "reveal" in value ? {
         __kind__: "reveal",
-        reveal: from_candid_record_n13(_uploadFile, _downloadFile, value.reveal)
+        reveal: from_candid_record_n10(_uploadFile, _downloadFile, value.reveal)
     } : "betting" in value ? {
         __kind__: "betting",
         betting: value.betting
@@ -702,35 +977,8 @@ function from_candid_variant_n12(_uploadFile: (file: ExternalBlob) => Promise<Ui
         cooldown: value.cooldown
     } : value;
 }
-function from_candid_variant_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    admin: null;
-} | {
-    user: null;
-} | {
-    guest: null;
-}): UserRole {
-    return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
-}
-function from_candid_vec_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_RoundView>): Array<RoundView> {
-    return value.map((x)=>from_candid_RoundView_n8(_uploadFile, _downloadFile, x));
-}
-function to_candid_UserRole_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
-    return to_candid_variant_n2(_uploadFile, _downloadFile, value);
-}
-function to_candid_variant_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
-    admin: null;
-} | {
-    user: null;
-} | {
-    guest: null;
-} {
-    return value == UserRole.admin ? {
-        admin: null
-    } : value == UserRole.user ? {
-        user: null
-    } : value == UserRole.guest ? {
-        guest: null
-    } : value;
+function from_candid_vec_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_RoundView>): Array<RoundView> {
+    return value.map((x)=>from_candid_RoundView_n6(_uploadFile, _downloadFile, x));
 }
 export interface CreateActorOptions {
     agent?: Agent;
